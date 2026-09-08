@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.IO.Ports;
 using System.Windows;
 using System.Windows.Data;
@@ -21,7 +21,6 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        // Инициализация темы и планировщика бэкапа
         ThemeManager.ApplyTheme(AppThemeMode.System);
         BackupManager.InitScheduler();
 
@@ -41,22 +40,46 @@ public partial class MainWindow : Window
         };
     }
 
-    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    private void Header_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == System.Windows.Input.MouseButton.Left)
+        {
+            DragMove();
+        }
+    }
+
+    private void BtnMinimize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void BtnMaximize_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    }
+
+    private void BtnClose_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private async void BtnManageObjects_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new ManageObjectsWindow(_dbPath) { Owner = this };
+        win.ShowDialog();
+        await RefreshDataAsync();
+    }
+
+    private async void BtnSettings_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new SettingsWindow(_currentPort, _dbPath) { Owner = this };
         if (dlg.ShowDialog() == true)
         {
             _currentPort = dlg.SelectedPort;
             CheckHardwareStatus();
+            await RefreshDataAsync();
         }
     }
-
-	private void BtnManageObjects_Click(object sender, RoutedEventArgs e)
-       {
-           var win = new ManageObjectsWindow(_dbPath) { Owner = this };
-           win.ShowDialog();
-           _ = RefreshDataAsync();
-       }
 
     private void CheckHardwareStatus()
     {
@@ -77,10 +100,10 @@ public partial class MainWindow : Window
         catch { }
 
         LedComPort.Fill = new SolidColorBrush(comOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtComStatus.Text = comOk ? $"COM: {_currentPort}" : $"COM: {_currentPort} (Нет)";
+        TxtComStatus.Text = comOk ? $"COM: {_currentPort}" : $"COM: {_currentPort} (���)";
 
         LedModem.Fill = new SolidColorBrush(modemOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtModemStatus.Text = modemOk ? "Модем: Подключен" : "Модем: Нет";
+        TxtModemStatus.Text = modemOk ? "�����: ���������" : "�����: ���";
     }
 
     private async Task RefreshDataAsync()
@@ -90,7 +113,6 @@ public partial class MainWindow : Window
             using var db = new AppDbContext(_dbPath);
             if (!await db.Database.CanConnectAsync()) return;
 
-            // 1. Объекты
             var objects = await db.Objects
                 .Include(o => o.TelemetryRecords).ThenInclude(t => t.Temperatures)
                 .ToListAsync();
@@ -106,16 +128,16 @@ public partial class MainWindow : Window
                 return new ObjectViewModel
                 {
                     Id = o.Id,
-                    District = string.IsNullOrWhiteSpace(o.District) ? "Основной участок" : o.District,
+                    District = string.IsNullOrWhiteSpace(o.District) ? "�������� �������" : o.District,
                     Name = o.Name,
                     Phone = o.PhoneNumber,
-                    TempT1 = t1.HasValue ? $"{t1.Value:F1} °C" : "--",
-                    TempT2 = t2.HasValue ? $"{t2.Value:F1} °C" : "--",
-                    TempT3 = t3.HasValue ? $"{t3.Value:F1} °C" : "--",
-                    PowerStatus = isPowerOk ? "220V: Норма" : "220V: Авария!",
+                    TempT1 = t1.HasValue ? $"{t1.Value:F1} �C" : "--",
+                    TempT2 = t2.HasValue ? $"{t2.Value:F1} �C" : "--",
+                    TempT3 = t3.HasValue ? $"{t3.Value:F1} �C" : "--",
+                    PowerStatus = isPowerOk ? "220V: �����" : "220V: ������!",
                     PowerColor = isPowerOk ? "#A6E3A1" : "#F38BA8",
-                    BatteryStatus = last?.BatteryVoltage != null ? $"АКБ: {last.BatteryVoltage:F1}V" : "АКБ: --",
-                    LastUpdate = last != null ? $"Обновлено: {last.Timestamp:HH:mm:ss}" : "Нет данных"
+                    BatteryStatus = last?.BatteryVoltage != null ? $"���: {last.BatteryVoltage:F1}V" : "���: --",
+                    LastUpdate = last != null ? $"���������: {last.Timestamp:HH:mm:ss}" : "��� ������"
                 };
             }).ToList();
 
@@ -123,7 +145,6 @@ public partial class MainWindow : Window
             view.GroupDescriptions.Add(new PropertyGroupDescription("District"));
             ListObjects.ItemsSource = view;
 
-            // 2. Журнал тревог (ограничение ровно 100 записей)
             long? selectedAlarmId = (GridAlarms.SelectedItem as AlarmItemViewModel)?.Id;
 
             var alarms = await db.Alarms
@@ -134,10 +155,10 @@ public partial class MainWindow : Window
                 {
                     Id = a.Id,
                     Timestamp = a.Timestamp,
-                    ObjectName = a.MonitoredObject != null ? a.MonitoredObject.Name : "Неизвестно",
+                    ObjectName = a.MonitoredObject != null ? a.MonitoredObject.Name : "����������",
                     Description = a.Description,
                     IsAcknowledged = a.IsAcknowledged,
-                    StatusText = a.IsAcknowledged ? "Квитирована" : "АКТИВНА ТРЕВОГА"
+                    StatusText = a.IsAcknowledged ? "�����������" : "������� �������"
                 })
                 .ToListAsync();
 
@@ -149,7 +170,6 @@ public partial class MainWindow : Window
                 if (row != null) GridAlarms.SelectedItem = row;
             }
 
-            // 3. Синтез тревожного звука (промышленный зуммер 1200Гц -> 900Гц)
             if (ChkSoundEnabled.IsChecked == true && alarms.Count > 0)
             {
                 long currentMaxId = alarms.Max(a => a.Id);
@@ -160,7 +180,7 @@ public partial class MainWindow : Window
                 if (isNew || reminder)
                 {
                     _lastSoundTime = DateTime.UtcNow;
-                    Task.Run(() =>
+                    _ = Task.Run(() =>
                     {
                         try
                         {
@@ -199,7 +219,7 @@ public partial class MainWindow : Window
         {
             using var db = new AppDbContext(_dbPath);
             var obj = db.Objects.Find(objId);
-            new HistoryGraphWindow(objId, obj?.Name ?? "Объект", _dbPath) { Owner = this }.ShowDialog();
+            new HistoryGraphWindow(objId, obj?.Name ?? "������", _dbPath) { Owner = this }.ShowDialog();
         }
     }
 }
