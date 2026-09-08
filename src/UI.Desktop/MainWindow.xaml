@@ -13,7 +13,7 @@
             <RowDefinition Height="2*"/>
         </Grid.RowDefinitions>
 
-        <!-- Шапка -->
+        <!-- Шапка (кнопка Объекты убрана) -->
         <Border Grid.Row="0" Background="{DynamicResource BgHeader}" CornerRadius="8" Padding="12,8" Margin="0,0,0,10" MouseDown="Header_MouseDown">
             <DockPanel LastChildFill="False">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="4,0,25,0">
@@ -22,11 +22,7 @@
                                Foreground="{DynamicResource TextMain}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <!-- Кнопки Объекты и Система -->
-                <Button Content="🏢 Объекты" Click="BtnManageObjects_Click"
-                        Background="#89B4FA" Foreground="#11111B" FontSize="13" FontWeight="Bold"
-                        Padding="12,6" BorderThickness="0" Margin="0,0,8,0" Cursor="Hand"/>
-
+                <!-- Оставлена только кнопка Система -->
                 <Button Content="⚙ Система" Click="BtnSettings_Click"
                         Background="#45475A" Foreground="#CDD6F4" FontSize="13" FontWeight="Bold"
                         Padding="12,6" BorderThickness="0" Margin="0,0,20,0" Cursor="Hand"/>
@@ -72,8 +68,15 @@
         </Border>
 
         <!-- Список объектов -->
-        <GroupBox Grid.Row="1" Header="Контролируемые объекты по участкам" Foreground="{DynamicResource TextMain}" FontSize="15" FontWeight="Bold">
+        <GroupBox Grid.Row="1" Header="Контролируемые объекты по участкам (клик — открыть карточку, ПКМ — меню)" Foreground="{DynamicResource TextMain}" FontSize="14" FontWeight="Bold">
             <ListView x:Name="ListObjects" Background="{DynamicResource BgInner}" BorderThickness="0" Margin="0,6,0,0">
+                <!-- Контекстное меню на пустом пространстве списка -->
+                <ListView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="➕ Добавить новый объект" Click="MenuAddObject_Click"/>
+                    </ContextMenu>
+                </ListView.ContextMenu>
+
                 <ListView.GroupStyle>
                     <GroupStyle>
                         <GroupStyle.HeaderTemplate>
@@ -88,7 +91,18 @@
 
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="{DynamicResource BgCard}" CornerRadius="8" Margin="0,4" Padding="12" Width="1160">
+                        <Border Background="{DynamicResource BgCard}" CornerRadius="8" Margin="0,4" Padding="12" Width="1160"
+                                Cursor="Hand" MouseLeftButtonUp="Card_MouseLeftButtonUp">
+                            <!-- Контекстное меню конкретного объекта -->
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="✏ Редактировать / Телеуправление" Click="MenuEditObject_Click" Tag="{Binding Id}"/>
+                                    <MenuItem Header="➕ Добавить новый объект" Click="MenuAddObject_Click"/>
+                                    <Separator/>
+                                    <MenuItem Header="🗑 Удалить объект" Click="MenuDeleteObject_Click" Tag="{Binding Id}"/>
+                                </ContextMenu>
+                            </Border.ContextMenu>
+
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="230"/>
@@ -101,7 +115,10 @@
 
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Name}" Foreground="#89B4FA" FontWeight="Bold" FontSize="16"/>
-                                    <TextBlock Text="{Binding Phone}" Foreground="{DynamicResource TextMuted}" FontSize="13" Margin="0,2,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                        <TextBlock Text="{Binding Phone}" Foreground="{DynamicResource TextMuted}" FontSize="13"/>
+                                        <TextBlock Text="{Binding DeviceTypeName}" Foreground="#CBA6F7" FontSize="11" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <Border Grid.Column="1" Background="{DynamicResource BgInner}" CornerRadius="6" Margin="4" Padding="8,6">
@@ -146,7 +163,7 @@
         <GridSplitter Grid.Row="2" Height="6" HorizontalAlignment="Stretch" Background="{DynamicResource BorderColor}"/>
 
         <!-- Журнал тревог -->
-        <GroupBox Grid.Row="3" Header="Оперативный журнал тревог (до 100 записей)" Foreground="{DynamicResource TextMain}" FontSize="15" FontWeight="Bold" Margin="0,6,0,0">
+        <GroupBox Grid.Row="3" Header="Оперативный журнал тревог (до 100 записей)" Foreground="{DynamicResource TextMain}" FontSize="14" FontWeight="Bold" Margin="0,6,0,0">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
@@ -175,9 +192,10 @@
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <Button Grid.Row="1" Content="Квитировать (подтвердить) выбранную тревогу" 
-                        Click="BtnAcknowledge_Click" Height="36" Margin="0,8,0,0" FontSize="14"
-                        Background="#F38BA8" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
+<Button Grid.Row="1" Content="Подтвердить выбранную тревогу" 
+        Click="BtnAcknowledge_Click" Height="36" Margin="0,8,0,0" FontSize="14"
+        Background="#F38BA8" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
+
             </Grid>
         </GroupBox>
     </Grid>

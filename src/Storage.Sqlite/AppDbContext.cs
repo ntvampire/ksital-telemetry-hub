@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using KsitalTelemetryHub.Core;
 
@@ -5,12 +6,13 @@ namespace KsitalTelemetryHub.Storage.Sqlite;
 
 public class AppDbContext : DbContext
 {
+    private readonly string _dbPath;
+
     public DbSet<MonitoredObject> Objects => Set<MonitoredObject>();
     public DbSet<TelemetryRecord> Telemetry => Set<TelemetryRecord>();
     public DbSet<TemperatureRecord> Temperatures => Set<TemperatureRecord>();
     public DbSet<AlarmEvent> Alarms => Set<AlarmEvent>();
-
-    private readonly string _dbPath;
+    public DbSet<OutgoingCommand> OutgoingCommands => Set<OutgoingCommand>();
 
     public AppDbContext(string dbPath = "telemetry.db")
     {
@@ -19,12 +21,19 @@ public class AppDbContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
-        optionsBuilder.UseSqlite($"Data Source={_dbPath}");
+        var csb = new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared
+        };
+        optionsBuilder.UseSqlite(csb.ToString());
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // Индексы для быстрого поиска по номеру и времени
+        base.OnModelCreating(modelBuilder);
+
         modelBuilder.Entity<MonitoredObject>()
             .HasIndex(o => o.PhoneNumber)
             .IsUnique();
@@ -34,60 +43,103 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<AlarmEvent>()
             .HasIndex(a => a.Timestamp);
+
+        modelBuilder.Entity<OutgoingCommand>()
+            .HasIndex(c => c.CreatedAt);
     }
 
-    /// <summary>
-    /// Сохраняет разобранный отчет КСИТАЛ, автоматически регистрируя новый объект, если его еще нет.
-    /// </summary>
-    public async Task SaveReportAsync(KsitalReport report, CancellationToken cancellationToken = default)
+public async Task SaveReportAsync(KsitalReport report, CancellationToken cancellationToken = default)
     {
-        // 1. Ищем объект по номеру телефона или создаем новый
-        var monitoredObj = await Objects
-            .FirstOrDefaultAsync(o => o.PhoneNumber == report.SenderPhone, cancellationToken);
+        string senderPhone = "+79000000000";
 
-        if (monitoredObj == null)
+        var obj = await Objects.FirstOrDefaultAsync(o => o.PhoneNumber == senderPhone, cancellationToken);
+        if (obj == null)
         {
-            monitoredObj = new MonitoredObject
+            obj = new MonitoredObject
             {
-                PhoneNumber = report.SenderPhone,
-                Name = string.IsNullOrWhiteSpace(report.DeviceName) ? $"Объект {report.SenderPhone}" : report.DeviceName,
-                Description = "Автоматически создан при приеме SMS"
+                PhoneNumber = senderPhone,
+                Name = $"Объект {senderPhone}",
+                District = "Основной участок",
+                DeviceType = DeviceType.Ksital,
+                DevicePassword = "00000"
             };
-            Objects.Add(monitoredObj);
+            Objects.Add(obj);
             await SaveChangesAsync(cancellationToken);
         }
 
-        // 2. Создаем срез телеметрии
-        var telemetry = new TelemetryRecord
+        var record = new TelemetryRecord
         {
-            MonitoredObjectId = monitoredObj.Id,
-            Timestamp = report.Timestamp,
+            MonitoredObjectId = obj.Id,
+            Timestamp = report.Timestamp != default ? report.Timestamp : DateTime.UtcNow,
             MainPower = report.MainPower,
-            BatteryVoltage = report.BatteryVoltage,
-            SimBalance = report.SimBalance,
-            RawSmsText = report.RawText,
-            Temperatures = report.Temperatures.Select(t => new TemperatureRecord
-            {
-                SensorCode = t.Key,
-                Value = t.Value
-            }).ToList()
+            BatteryVoltage = report.BatteryVoltage
         };
 
-        Telemetry.Add(telemetry);
-
-        // 3. Если это тревога/авария — записываем в журнал тревог
-        if (report.IsAlarm)
+        if (report.Temperatures != null)
         {
-            var alarm = new AlarmEvent
+            foreach (var t in report.Temperatures)
             {
-                MonitoredObjectId = monitoredObj.Id,
-                Timestamp = report.Timestamp,
-                Description = string.IsNullOrWhiteSpace(report.AlarmDescription) ? report.RawText : report.AlarmDescription,
+                record.Temperatures.Add(new TemperatureRecord
+                {
+                    SensorCode = t.Key,
+                    Value = t.Value
+                });
+            }
+        }
+
+        Telemetry.Add(record);
+
+        if (report.MainPower != PowerState.Normal)
+        {
+            Alarms.Add(new AlarmEvent
+            {
+                MonitoredObjectId = obj.Id,
+                Timestamp = record.Timestamp,
+                Description = "Авария: Отсутствует основное питание 220V",
                 IsAcknowledged = false
-            };
-            Alarms.Add(alarm);
+            });
         }
 
         await SaveChangesAsync(cancellationToken);
+    }
+
+    public Task SaveReportAsync(string senderPhone, KsitalReport report, CancellationToken cancellationToken = default)
+    {
+        return SaveReportAsync(report, cancellationToken);
+    }
+
+    public static void EnsureDatabaseUpdated(string dbPath)
+    {
+        using var db = new AppDbContext(dbPath);
+        db.Database.EnsureCreated();
+
+        try
+        {
+            using var conn = db.Database.GetDbConnection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+
+            cmd.CommandText = "ALTER TABLE Objects ADD COLUMN DeviceType INTEGER NOT NULL DEFAULT 0;";
+            try { cmd.ExecuteNonQuery(); } catch { }
+
+            cmd.CommandText = "ALTER TABLE Objects ADD COLUMN DevicePassword TEXT NOT NULL DEFAULT '00000';";
+            try { cmd.ExecuteNonQuery(); } catch { }
+
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS OutgoingCommands (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    MonitoredObjectId INTEGER NOT NULL,
+                    PhoneNumber TEXT NOT NULL,
+                    RawPayload TEXT NOT NULL,
+                    Description TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    SentAt TEXT NULL,
+                    Status INTEGER NOT NULL DEFAULT 0,
+                    ErrorMessage TEXT NULL,
+                    FOREIGN KEY (MonitoredObjectId) REFERENCES Objects(Id) ON DELETE CASCADE
+                );";
+            cmd.ExecuteNonQuery();
+        }
+        catch { }
     }
 }

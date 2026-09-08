@@ -1,7 +1,13 @@
+using System;
 using System.ComponentModel;
 using System.IO.Ports;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.EntityFrameworkCore;
@@ -36,6 +42,8 @@ public partial class MainWindow : Window
         string candidatePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\..\telemetry.db"));
         _dbPath = System.IO.File.Exists(candidatePath) ? candidatePath : "telemetry.db";
 
+        AppDbContext.EnsureDatabaseUpdated(_dbPath);
+
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _timer.Tick += async (s, e) => await RefreshDataAsync();
         _timer.Start();
@@ -47,24 +55,14 @@ public partial class MainWindow : Window
         };
     }
 
-    private void Header_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void Header_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == System.Windows.Input.MouseButton.Left)
-        {
-            DragMove();
-        }
+        if (e.ChangedButton == MouseButton.Left) DragMove();
     }
 
     private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void BtnMaximize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
-
-    private async void BtnManageObjects_Click(object sender, RoutedEventArgs e)
-    {
-        var win = new ManageObjectsWindow(_dbPath) { Owner = this };
-        win.ShowDialog();
-        await RefreshDataAsync();
-    }
 
     private async void BtnSettings_Click(object sender, RoutedEventArgs e)
     {
@@ -74,6 +72,54 @@ public partial class MainWindow : Window
             _currentPort = dlg.SelectedPort;
             await CheckHardwareStatusAsync();
             await RefreshDataAsync();
+        }
+    }
+
+    private async void Card_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement elem && elem.DataContext is ObjectViewModel vm)
+        {
+            var dlg = new ObjectDetailsWindow(vm.Id, _dbPath) { Owner = this };
+            dlg.ShowDialog();
+            await RefreshDataAsync();
+        }
+    }
+
+    private async void MenuEditObject_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is int objId)
+        {
+            var dlg = new ObjectDetailsWindow(objId, _dbPath) { Owner = this };
+            dlg.ShowDialog();
+            await RefreshDataAsync();
+        }
+    }
+
+    private async void MenuAddObject_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new ObjectDetailsWindow(0, _dbPath) { Owner = this };
+        if (dlg.ShowDialog() == true)
+        {
+            await RefreshDataAsync();
+        }
+    }
+
+    private async void MenuDeleteObject_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem mi && mi.Tag is int objId)
+        {
+            using var db = new AppDbContext(_dbPath);
+            var obj = db.Objects.Find(objId);
+            if (obj != null)
+            {
+                var res = MessageBox.Show($"Удалить объект «{obj.Name}» ({obj.PhoneNumber}) и всю его телеметрию?", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (res == MessageBoxResult.Yes)
+                {
+                    db.Objects.Remove(obj);
+                    await db.SaveChangesAsync();
+                    await RefreshDataAsync();
+                }
+            }
         }
     }
 
@@ -128,12 +174,20 @@ public partial class MainWindow : Window
                 var t3 = last?.Temperatures.FirstOrDefault(t => t.SensorCode == "T3")?.Value;
                 bool isPowerOk = last?.MainPower == PowerState.Normal;
 
+                string devName = o.DeviceType switch
+                {
+                    DeviceType.Ccu825 => "[CCU-825]",
+                    DeviceType.OwenPlc => "[ОВЕН ПЛК]",
+                    _ => "[КСИТАЛ]"
+                };
+
                 return new ObjectViewModel
                 {
                     Id = o.Id,
                     District = string.IsNullOrWhiteSpace(o.District) ? "Основной участок" : o.District,
                     Name = o.Name,
                     Phone = o.PhoneNumber,
+                    DeviceTypeName = devName,
                     TempT1 = t1.HasValue ? $"{t1.Value:F1} °C" : "--",
                     TempT2 = t2.HasValue ? $"{t2.Value:F1} °C" : "--",
                     TempT3 = t3.HasValue ? $"{t3.Value:F1} °C" : "--",
@@ -161,7 +215,7 @@ public partial class MainWindow : Window
                     ObjectName = a.MonitoredObject != null ? a.MonitoredObject.Name : "Неизвестно",
                     Description = a.Description,
                     IsAcknowledged = a.IsAcknowledged,
-                    StatusText = a.IsAcknowledged ? "Квитирована" : "АКТИВНА ТРЕВОГА"
+                    StatusText = a.IsAcknowledged ? "Подтверждена" : "АКТИВНА ТРЕВОГА"
                 })
                 .ToListAsync();
 
@@ -233,6 +287,7 @@ public class ObjectViewModel
     public string District { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
+    public string DeviceTypeName { get; set; } = string.Empty;
     public string TempT1 { get; set; } = string.Empty;
     public string TempT2 { get; set; } = string.Empty;
     public string TempT3 { get; set; } = string.Empty;
