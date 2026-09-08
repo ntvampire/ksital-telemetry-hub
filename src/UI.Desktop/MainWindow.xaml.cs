@@ -57,7 +57,8 @@ public partial class MainWindow : Window
 
                 return new
                 {
-                    Name = o.Name,
+                    Id = o.Id,
+		    Name = o.Name,
                     Phone = o.PhoneNumber,
                     TempT1 = t1.HasValue ? $"{t1.Value:F1} °C" : "--",
                     TempT2 = t2.HasValue ? $"{t2.Value:F1} °C" : "--",
@@ -115,6 +116,21 @@ public partial class MainWindow : Window
             MessageBox.Show("Выберите тревогу из таблицы для квитирования.", "Внимание", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
+	private void BtnShowGraph_Click(object sender, RoutedEventArgs e)
+	       {
+ 	          if (sender is FrameworkElement elem && elem.Tag is int objId)
+ 	          {
+ 	              using var db = new AppDbContext(_dbPath);
+  	             var obj = db.Objects.Find(objId);
+  	             string name = obj?.Name ?? "Объект";
+
+  	             var graphWindow = new HistoryGraphWindow(objId, name, _dbPath)
+   	            {
+   	                Owner = this
+   	            };
+   	            graphWindow.ShowDialog();
+  	         }
+  	     }
 }
 
 public class AlarmItemViewModel
