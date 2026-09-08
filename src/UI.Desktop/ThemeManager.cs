@@ -4,27 +4,11 @@ using Microsoft.Win32;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
-public enum AppThemeMode
-{
-    System,
-    Dark,
-    Light
-}
-
 public static class ThemeManager
 {
-    public static AppThemeMode CurrentMode { get; private set; } = AppThemeMode.System;
-
-    public static void ApplyTheme(AppThemeMode mode)
+    public static void ApplyAutoTheme()
     {
-        CurrentMode = mode;
-        bool isDark = mode switch
-        {
-            AppThemeMode.Dark => true,
-            AppThemeMode.Light => false,
-            _ => IsWindowsInDarkMode()
-        };
-
+        bool isDark = IsWindowsInDarkMode();
         var res = Application.Current.Resources;
 
         if (isDark)
@@ -59,7 +43,7 @@ public static class ThemeManager
         }
         catch
         {
-            return true; // fallback to dark
+            return true;
         }
     }
 }

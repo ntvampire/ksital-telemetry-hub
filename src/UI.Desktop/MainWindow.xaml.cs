@@ -21,10 +21,17 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
-        ThemeManager.ApplyTheme(AppThemeMode.System);
+        ThemeManager.ApplyAutoTheme();
         BackupManager.InitScheduler();
 
         InitializeComponent();
+
+        try
+        {
+            var iconUri = new Uri("pack://application:,,,/app_logo.png", UriKind.Absolute);
+            this.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(iconUri);
+        }
+        catch { }
 
         string candidatePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\..\telemetry.db"));
         _dbPath = System.IO.File.Exists(candidatePath) ? candidatePath : "telemetry.db";
@@ -35,7 +42,7 @@ public partial class MainWindow : Window
 
         Loaded += async (s, e) =>
         {
-            CheckHardwareStatus();
+            await CheckHardwareStatusAsync();
             await RefreshDataAsync();
         };
     }
@@ -48,20 +55,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BtnMinimize_Click(object sender, RoutedEventArgs e)
-    {
-        WindowState = WindowState.Minimized;
-    }
-
-    private void BtnMaximize_Click(object sender, RoutedEventArgs e)
-    {
-        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
-    }
-
-    private void BtnClose_Click(object sender, RoutedEventArgs e)
-    {
-        Close();
-    }
+    private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+    private void BtnMaximize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+    private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
     private async void BtnManageObjects_Click(object sender, RoutedEventArgs e)
     {
@@ -76,34 +72,41 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true)
         {
             _currentPort = dlg.SelectedPort;
-            CheckHardwareStatus();
+            await CheckHardwareStatusAsync();
             await RefreshDataAsync();
         }
     }
 
-    private void CheckHardwareStatus()
+    private async Task CheckHardwareStatusAsync()
     {
         bool comOk = false;
         bool modemOk = false;
+        string port = _currentPort;
 
-        try
+        await Task.Run(() =>
         {
-            var ports = SerialPort.GetPortNames();
-            if (ports.Contains(_currentPort))
+            try
             {
-                comOk = true;
-                using var client = new GsmModemClient(_currentPort, 115200);
-                client.Connect();
-                if (client.SendCommand("AT").Contains("OK")) modemOk = true;
+                var ports = SerialPort.GetPortNames();
+                if (ports.Contains(port))
+                {
+                    comOk = true;
+                    using var client = new GsmModemClient(port, 115200);
+                    client.Connect();
+                    if (client.SendCommand("AT").Contains("OK")) modemOk = true;
+                }
             }
-        }
-        catch { }
+            catch { }
+        });
 
-        LedComPort.Fill = new SolidColorBrush(comOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtComStatus.Text = comOk ? $"COM: {_currentPort}" : $"COM: {_currentPort} (Нет)";
+        Dispatcher.Invoke(() =>
+        {
+            LedComPort.Fill = new SolidColorBrush(comOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
+            TxtComStatus.Text = comOk ? $"COM: {port}" : $"COM: {port} (РќРµС‚)";
 
-        LedModem.Fill = new SolidColorBrush(modemOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtModemStatus.Text = modemOk ? "Модем: Подключен" : "Модем: Нет";
+            LedModem.Fill = new SolidColorBrush(modemOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
+            TxtModemStatus.Text = modemOk ? "РњРѕРґРµРј: РћРљ" : "РњРѕРґРµРј: РќРµС‚";
+        });
     }
 
     private async Task RefreshDataAsync()
@@ -128,16 +131,16 @@ public partial class MainWindow : Window
                 return new ObjectViewModel
                 {
                     Id = o.Id,
-                    District = string.IsNullOrWhiteSpace(o.District) ? "Основной участок" : o.District,
+                    District = string.IsNullOrWhiteSpace(o.District) ? "РћСЃРЅРѕРІРЅРѕР№ СѓС‡Р°СЃС‚РѕРє" : o.District,
                     Name = o.Name,
                     Phone = o.PhoneNumber,
-                    TempT1 = t1.HasValue ? $"{t1.Value:F1} °C" : "--",
-                    TempT2 = t2.HasValue ? $"{t2.Value:F1} °C" : "--",
-                    TempT3 = t3.HasValue ? $"{t3.Value:F1} °C" : "--",
-                    PowerStatus = isPowerOk ? "220V: Норма" : "220V: Авария!",
+                    TempT1 = t1.HasValue ? $"{t1.Value:F1} В°C" : "--",
+                    TempT2 = t2.HasValue ? $"{t2.Value:F1} В°C" : "--",
+                    TempT3 = t3.HasValue ? $"{t3.Value:F1} В°C" : "--",
+                    PowerStatus = isPowerOk ? "220V: РќРѕСЂРјР°" : "220V: РђРІР°СЂРёСЏ!",
                     PowerColor = isPowerOk ? "#A6E3A1" : "#F38BA8",
-                    BatteryStatus = last?.BatteryVoltage != null ? $"АКБ: {last.BatteryVoltage:F1}V" : "АКБ: --",
-                    LastUpdate = last != null ? $"Обновлено: {last.Timestamp:HH:mm:ss}" : "Нет данных"
+                    BatteryStatus = last?.BatteryVoltage != null ? $"РђРљР‘: {last.BatteryVoltage:F1}V" : "РђРљР‘: --",
+                    LastUpdate = last != null ? $"РћР±РЅРѕРІР»РµРЅРѕ: {last.Timestamp:HH:mm:ss}" : "РќРµС‚ РґР°РЅРЅС‹С…"
                 };
             }).ToList();
 
@@ -155,10 +158,10 @@ public partial class MainWindow : Window
                 {
                     Id = a.Id,
                     Timestamp = a.Timestamp,
-                    ObjectName = a.MonitoredObject != null ? a.MonitoredObject.Name : "Неизвестно",
+                    ObjectName = a.MonitoredObject != null ? a.MonitoredObject.Name : "РќРµРёР·РІРµСЃС‚РЅРѕ",
                     Description = a.Description,
                     IsAcknowledged = a.IsAcknowledged,
-                    StatusText = a.IsAcknowledged ? "Квитирована" : "АКТИВНА ТРЕВОГА"
+                    StatusText = a.IsAcknowledged ? "РљРІРёС‚РёСЂРѕРІР°РЅР°" : "РђРљРўРР’РќРђ РўР Р•Р’РћР“Рђ"
                 })
                 .ToListAsync();
 
@@ -219,7 +222,7 @@ public partial class MainWindow : Window
         {
             using var db = new AppDbContext(_dbPath);
             var obj = db.Objects.Find(objId);
-            new HistoryGraphWindow(objId, obj?.Name ?? "Объект", _dbPath) { Owner = this }.ShowDialog();
+            new HistoryGraphWindow(objId, obj?.Name ?? "РћР±СЉРµРєС‚", _dbPath) { Owner = this }.ShowDialog();
         }
     }
 }

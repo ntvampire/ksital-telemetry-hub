@@ -1,4 +1,3 @@
-using System.IO;
 using System.IO.Ports;
 using System.Windows;
 using Microsoft.Win32;
@@ -18,14 +17,6 @@ public partial class SettingsWindow : Window
 
         LoadPorts();
         TxtBackupFolder.Text = BackupManager.BackupFolder;
-
-        // Установка чекбокса темы
-        switch (ThemeManager.CurrentMode)
-        {
-            case AppThemeMode.Dark: RbThemeDark.IsChecked = true; break;
-            case AppThemeMode.Light: RbThemeLight.IsChecked = true; break;
-            default: RbThemeSystem.IsChecked = true; break;
-        }
     }
 
     private void LoadPorts()
@@ -37,13 +28,6 @@ public partial class SettingsWindow : Window
     }
 
     private void BtnRefreshPorts_Click(object sender, RoutedEventArgs e) => LoadPorts();
-
-    private void RbTheme_Checked(object sender, RoutedEventArgs e)
-    {
-        if (RbThemeDark.IsChecked == true) ThemeManager.ApplyTheme(AppThemeMode.Dark);
-        else if (RbThemeLight.IsChecked == true) ThemeManager.ApplyTheme(AppThemeMode.Light);
-        else if (RbThemeSystem.IsChecked == true) ThemeManager.ApplyTheme(AppThemeMode.System);
-    }
 
     private void BtnBrowseBackup_Click(object sender, RoutedEventArgs e)
     {
@@ -67,22 +51,17 @@ public partial class SettingsWindow : Window
         var ofd = new OpenFileDialog
         {
             Filter = "База SQLite (*.db)|*.db",
-            Title = "Выберите файл резервной копии для восстановления"
+            Title = "Выберите файл резервной копии"
         };
 
         if (ofd.ShowDialog() == true)
         {
-            if (MessageBox.Show($"Восстановить базу данных из файла?\n{ofd.FileName}\nТекущие данные будут перезаписаны!", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
+            if (MessageBox.Show($"Восстановить базу данных из файла?\n{ofd.FileName}\nТекущие данные будут заменены!", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
             {
                 BackupManager.RestoreBackup(ofd.FileName, _dbPath);
-                MessageBox.Show("База данных успешно восстановлена. Приложение обновит данные.", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show("База данных успешно восстановлена.", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
-    }
-
-    private void BtnOpenManageObjects_Click(object sender, RoutedEventArgs e)
-    {
-        new ManageObjectsWindow(_dbPath) { Owner = this }.ShowDialog();
     }
 
     private void BtnSave_Click(object sender, RoutedEventArgs e)
