@@ -1,0 +1,68 @@
+<Window x:Class="KsitalTelemetryHub.UI.Desktop.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Параметры и сервис системы" Height="560" Width="760"
+        Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Настройки системы" FontSize="20" FontWeight="Bold" Margin="0,0,0,15"/>
+
+        <TabControl Grid.Row="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderColor}">
+            <!-- Вкладка Оборудование и Связь -->
+            <TabItem Header="Связь и Модем" Background="{DynamicResource BgHeader}">
+                <StackPanel Margin="15">
+                    <TextBlock Text="COM-порт подключения GSM-модема:" FontSize="13" Margin="0,0,0,6"/>
+                    <StackPanel Orientation="Horizontal">
+                        <ComboBox x:Name="CmbPorts" Width="140" Height="28"/>
+                        <Button Content="Обновить список" Click="BtnRefreshPorts_Click" Margin="10,0,0,0" Padding="10,4"/>
+                    </StackPanel>
+                    <TextBlock Text="Скорость порта по умолчанию: 115200 бод, 8-N-1" Foreground="{DynamicResource TextMuted}" Margin="0,8,0,0" FontSize="11"/>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Вкладка Оформление -->
+            <TabItem Header="Оформление" Background="{DynamicResource BgHeader}">
+                <StackPanel Margin="15">
+                    <TextBlock Text="Тема графического интерфейса:" FontSize="13" Margin="0,0,0,10"/>
+                    <RadioButton x:Name="RbThemeSystem" Content="Системная (по умолчанию Windows)" GroupName="Theme" Margin="0,4" Checked="RbTheme_Checked"/>
+                    <RadioButton x:Name="RbThemeDark" Content="Темная" GroupName="Theme" Margin="0,4" Checked="RbTheme_Checked"/>
+                    <RadioButton x:Name="RbThemeLight" Content="Светлая" GroupName="Theme" Margin="0,4" Checked="RbTheme_Checked"/>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Вкладка Резервное копирование -->
+            <TabItem Header="Резервное копирование" Background="{DynamicResource BgHeader}">
+                <StackPanel Margin="15">
+                    <TextBlock Text="Папка для хранения резервных копий (Бэкап каждый день в 04:00, хранение 10 копий):" FontSize="12" Margin="0,0,0,6"/>
+                    <DockPanel Margin="0,0,0,15">
+                        <Button Content="Обзор..." Click="BtnBrowseBackup_Click" DockPanel.Dock="Right" Padding="10,4" Margin="8,0,0,0"/>
+                        <TextBox x:Name="TxtBackupFolder" Height="26" VerticalContentAlignment="Center" Background="{DynamicResource BgInner}" Foreground="{DynamicResource TextMain}"/>
+                    </DockPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="Создать резервную копию сейчас" Click="BtnCreateBackup_Click" Padding="12,6" Background="#A6E3A1" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Margin="0,0,10,0"/>
+                        <Button Content="Восстановить базу из файла..." Click="BtnRestoreBackup_Click" Padding="12,6" Background="#F38BA8" Foreground="#11111B" FontWeight="Bold" BorderThickness="0"/>
+                    </StackPanel>
+                </StackPanel>
+            </TabItem>
+
+            <!-- Вкладка Справочники -->
+            <TabItem Header="Объекты" Background="{DynamicResource BgHeader}">
+                <StackPanel Margin="15">
+                    <TextBlock Text="Управление справочником контролируемых котельных и участков:" Margin="0,0,0,10"/>
+                    <Button Content="Открыть окно управления объектами..." Click="BtnOpenManageObjects_Click" HorizontalAlignment="Left" Padding="14,8" Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" BorderThickness="0"/>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Сохранить и закрыть" Click="BtnSave_Click" Width="160" Height="32" Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" BorderThickness="0"/>
+        </StackPanel>
+    </Grid>
+</Window>

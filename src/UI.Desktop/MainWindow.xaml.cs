@@ -8,26 +8,27 @@ using Microsoft.EntityFrameworkCore;
 using KsitalTelemetryHub.Core;
 using KsitalTelemetryHub.Modem.Engine;
 using KsitalTelemetryHub.Storage.Sqlite;
-using System.Media;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
 public partial class MainWindow : Window
 {
-    private long _lastMaxAlarmId = 0;
-	private DateTime _lastSoundTime = DateTime.MinValue;
-	private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _timer;
     private readonly string _dbPath;
     private string _currentPort = "COM3";
+    private long _lastMaxAlarmId = 0;
+    private DateTime _lastSoundTime = DateTime.MinValue;
 
     public MainWindow()
     {
+        // Инициализация темы и планировщика бэкапа
+        ThemeManager.ApplyTheme(AppThemeMode.System);
+        BackupManager.InitScheduler();
+
         InitializeComponent();
 
         string candidatePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\..\telemetry.db"));
         _dbPath = System.IO.File.Exists(candidatePath) ? candidatePath : "telemetry.db";
-
-        RefreshPortList();
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _timer.Tick += async (s, e) => await RefreshDataAsync();
@@ -40,25 +41,13 @@ public partial class MainWindow : Window
         };
     }
 
-    private void RefreshPortList()
+    private void BtnSettings_Click(object sender, RoutedEventArgs e)
     {
-        var ports = SerialPort.GetPortNames();
-        CmbPorts.ItemsSource = ports;
-        if (ports.Length > 0 && string.IsNullOrEmpty(CmbPorts.Text))
+        var dlg = new SettingsWindow(_currentPort, _dbPath) { Owner = this };
+        if (dlg.ShowDialog() == true)
         {
-            CmbPorts.SelectedItem = ports.Contains(_currentPort) ? _currentPort : ports[0];
-        }
-    }
-
-    private void CmbPorts_DropDownOpened(object sender, EventArgs e) => RefreshPortList();
-
-    private void BtnChangePort_Click(object sender, RoutedEventArgs e)
-    {
-        if (CmbPorts.SelectedItem != null)
-        {
-            _currentPort = CmbPorts.SelectedItem.ToString()!;
+            _currentPort = dlg.SelectedPort;
             CheckHardwareStatus();
-            MessageBox.Show($"Выбран порт: {_currentPort}", "Настройки", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
@@ -73,28 +62,18 @@ public partial class MainWindow : Window
             if (ports.Contains(_currentPort))
             {
                 comOk = true;
-                // Тестовый опрос модема короткой AT-командой
                 using var client = new GsmModemClient(_currentPort, 115200);
                 client.Connect();
-                string ping = client.SendCommand("AT");
-                if (ping.Contains("OK"))
-                {
-                    modemOk = true;
-                }
+                if (client.SendCommand("AT").Contains("OK")) modemOk = true;
             }
         }
-        catch
-        {
-            // Ошибки подключения оставляют индикаторы красными
-        }
+        catch { }
 
-        // Обновление светодиода COM-порта
         LedComPort.Fill = new SolidColorBrush(comOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtComStatus.Text = comOk ? $"COM-порт: {_currentPort} (Готов)" : $"COM-порт: {_currentPort} (Нет)";
+        TxtComStatus.Text = comOk ? $"COM: {_currentPort}" : $"COM: {_currentPort} (Нет)";
 
-        // Обновление светодиода GSM-модема
         LedModem.Fill = new SolidColorBrush(modemOk ? Color.FromRgb(166, 227, 161) : Color.FromRgb(243, 139, 168));
-        TxtModemStatus.Text = modemOk ? "Модем: Подключен" : "Модем: Нет ответа";
+        TxtModemStatus.Text = modemOk ? "Модем: Подключен" : "Модем: Нет";
     }
 
     private async Task RefreshDataAsync()
@@ -104,10 +83,9 @@ public partial class MainWindow : Window
             using var db = new AppDbContext(_dbPath);
             if (!await db.Database.CanConnectAsync()) return;
 
-            // 1. Загрузка объектов и группировка по District
+            // 1. Объекты
             var objects = await db.Objects
-                .Include(o => o.TelemetryRecords)
-                    .ThenInclude(t => t.Temperatures)
+                .Include(o => o.TelemetryRecords).ThenInclude(t => t.Temperatures)
                 .ToListAsync();
 
             var viewModels = objects.Select(o =>
@@ -121,7 +99,7 @@ public partial class MainWindow : Window
                 return new ObjectViewModel
                 {
                     Id = o.Id,
-                    District = string.IsNullOrWhiteSpace(o.District) ? "Без участка" : o.District,
+                    District = string.IsNullOrWhiteSpace(o.District) ? "Основной участок" : o.District,
                     Name = o.Name,
                     Phone = o.PhoneNumber,
                     TempT1 = t1.HasValue ? $"{t1.Value:F1} °C" : "--",
@@ -138,13 +116,13 @@ public partial class MainWindow : Window
             view.GroupDescriptions.Add(new PropertyGroupDescription("District"));
             ListObjects.ItemsSource = view;
 
-            // 2. Журнал тревог с СОХРАНЕНИЕМ выделенной строки
+            // 2. Журнал тревог (ограничение ровно 100 записей)
             long? selectedAlarmId = (GridAlarms.SelectedItem as AlarmItemViewModel)?.Id;
 
             var alarms = await db.Alarms
                 .Include(a => a.MonitoredObject)
                 .OrderByDescending(a => a.Timestamp)
-                .Take(30)
+                .Take(100)
                 .Select(a => new AlarmItemViewModel
                 {
                     Id = a.Id,
@@ -156,50 +134,40 @@ public partial class MainWindow : Window
                 })
                 .ToListAsync();
 
-		GridAlarms.ItemsSource = alarms;
+            GridAlarms.ItemsSource = alarms;
 
-         // Звуковое оповещение диспетчера
-         bool soundAllowed = ChkSoundEnabled.IsChecked == true;
-         if (soundAllowed && alarms.Count > 0)
-         {
-             long currentMaxId = alarms.Max(a => a.Id);
-             bool hasUnacknowledged = alarms.Any(a => !a.IsAcknowledged);
-
-             // 1. Пришла абсолютно новая тревога (Id больше предыдущего максимального)
-             bool isBrandNewAlarm = _lastMaxAlarmId > 0 && currentMaxId > _lastMaxAlarmId;
-
-             // 2. Либо периодическое напоминание раз в 12 секунд о висящих неквитированных тревогах
-             bool reminderTick = hasUnacknowledged && (DateTime.UtcNow - _lastSoundTime).TotalSeconds >= 12;
-
-             if (isBrandNewAlarm || reminderTick)
-             {
-                 SystemSounds.Exclamation.Play();
-                 _lastSoundTime = DateTime.UtcNow;
-             }
-
-             _lastMaxAlarmId = currentMaxId;
-         }
-            // Восстановление курсора на той же строке
             if (selectedAlarmId.HasValue)
             {
-                var rowToSelect = alarms.FirstOrDefault(a => a.Id == selectedAlarmId.Value);
-                if (rowToSelect != null)
+                var row = alarms.FirstOrDefault(a => a.Id == selectedAlarmId.Value);
+                if (row != null) GridAlarms.SelectedItem = row;
+            }
+
+            // 3. Синтез тревожного звука (промышленный зуммер 1200Гц -> 900Гц)
+            if (ChkSoundEnabled.IsChecked == true && alarms.Count > 0)
+            {
+                long currentMaxId = alarms.Max(a => a.Id);
+                bool hasUnacknowledged = alarms.Any(a => !a.IsAcknowledged);
+                bool isNew = _lastMaxAlarmId > 0 && currentMaxId > _lastMaxAlarmId;
+                bool reminder = hasUnacknowledged && (DateTime.UtcNow - _lastSoundTime).TotalSeconds >= 12;
+
+                if (isNew || reminder)
                 {
-                    GridAlarms.SelectedItem = rowToSelect;
+                    _lastSoundTime = DateTime.UtcNow;
+                    Task.Run(() =>
+                    {
+                        try
+                        {
+                            Console.Beep(1200, 150);
+                            Thread.Sleep(50);
+                            Console.Beep(900, 220);
+                        }
+                        catch { }
+                    });
                 }
+                _lastMaxAlarmId = currentMaxId;
             }
         }
-        catch
-        {
-            // Ошибки временного чтения БД игнорируем до следующего тика
-        }
-    }
-
-    private void BtnManageObjects_Click(object sender, RoutedEventArgs e)
-    {
-        var win = new ManageObjectsWindow(_dbPath) { Owner = this };
-        win.ShowDialog();
-        _ = RefreshDataAsync();
+        catch { }
     }
 
     private async void BtnAcknowledge_Click(object sender, RoutedEventArgs e)
@@ -215,10 +183,6 @@ public partial class MainWindow : Window
                 await db.SaveChangesAsync();
                 await RefreshDataAsync();
             }
-        }
-        else
-        {
-            MessageBox.Show("Выберите тревогу из списка.", "Внимание", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
@@ -247,6 +211,7 @@ public class ObjectViewModel
     public string BatteryStatus { get; set; } = string.Empty;
     public string LastUpdate { get; set; } = string.Empty;
 }
+
 public class AlarmItemViewModel
 {
     public long Id { get; set; }
