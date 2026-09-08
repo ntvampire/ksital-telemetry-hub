@@ -1,9 +1,12 @@
 using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Win32;
 using KsitalTelemetryHub.Storage.Sqlite;
 
 namespace KsitalTelemetryHub.UI.Desktop;
@@ -73,6 +76,55 @@ public partial class HistoryGraphWindow : Window
         }
     }
 
+    private void BtnExportCsv_Click(object sender, RoutedEventArgs e)
+    {
+        if (_cache.Count == 0)
+        {
+            MessageBox.Show("Нет данных для экспорта за выбранный период.", "Экспорт CSV", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Формирование безопасного имени файла
+        string safeName = string.Join("_", _objectName.Split(System.IO.Path.GetInvalidFileNameChars()));
+        string defaultFileName = $"Температура_{safeName}_{_selectedHours}ч_{DateTime.Now:yyyyMMdd_HHmm}.csv";
+
+        var sfd = new SaveFileDialog
+        {
+            Title = "Сохранение истории температур в CSV",
+            Filter = "CSV файлы (*.csv)|*.csv|Все файлы (*.*)|*.*",
+            FileName = defaultFileName
+        };
+
+        if (sfd.ShowDialog() == true)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                // Заголовок таблицы (разделитель точка с запятой для Excel)
+                sb.AppendLine("Дата и время;T1 Подача (°C);T2 Обратка (°C)");
+
+                foreach (var item in _cache)
+                {
+                    string localTime = item.Time.ToLocalTime().ToString("dd.MM.yyyy HH:mm:ss");
+                    string t1Str = item.T1.HasValue ? item.T1.Value.ToString("F1", CultureInfo.InvariantCulture) : "";
+                    string t2Str = item.T2.HasValue ? item.T2.Value.ToString("F1", CultureInfo.InvariantCulture) : "";
+
+                    sb.AppendLine($"{localTime};{t1Str};{t2Str}");
+                }
+
+                // UTF-8 с BOM, чтобы Excel корректно читал русские символы
+                File.WriteAllText(sfd.FileName, sb.ToString(), new UTF8Encoding(true));
+
+                MessageBox.Show($"Файл успешно сохранен ({_cache.Count} записей):\n{sfd.FileName}", 
+                                "Экспорт завершен", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Не удалось сохранить файл: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
     private void UpdateStats()
     {
         TxtPointsCount.Text = $"Точек за период: {_cache.Count}";
@@ -111,7 +163,6 @@ public partial class HistoryGraphWindow : Window
         double plotW = width - padLeft - padRight;
         double plotH = height - padTop - padBottom;
 
-        // Поиск диапазона температур
         var allTemps = _cache.SelectMany(p => new[] { p.T1, p.T2 }).Where(t => t.HasValue).Select(t => t!.Value).ToList();
         double minT = allTemps.Any() ? Math.Floor(allTemps.Min() - 2.0) : 0;
         double maxT = allTemps.Any() ? Math.Ceiling(allTemps.Max() + 2.0) : 100;
@@ -122,7 +173,6 @@ public partial class HistoryGraphWindow : Window
         double timeSpan = (maxTime - minTime).TotalSeconds;
         if (timeSpan < 1) timeSpan = 1;
 
-        // Отрисовка горизонтальной сетки (температуры)
         int yTicks = 5;
         for (int i = 0; i <= yTicks; i++)
         {
@@ -151,16 +201,15 @@ public partial class HistoryGraphWindow : Window
             PlotCanvas.Children.Add(label);
         }
 
-        // Построение ломаных линий T1 и T2
         var polyT1 = new Polyline
         {
-            Stroke = new SolidColorBrush(Color.FromRgb(243, 139, 168)), // Розовый T1
+            Stroke = new SolidColorBrush(Color.FromRgb(243, 139, 168)),
             StrokeThickness = 2.5
         };
 
         var polyT2 = new Polyline
         {
-            Stroke = new SolidColorBrush(Color.FromRgb(137, 180, 250)), // Голубой T2
+            Stroke = new SolidColorBrush(Color.FromRgb(137, 180, 250)),
             StrokeThickness = 2.5
         };
 
@@ -184,7 +233,6 @@ public partial class HistoryGraphWindow : Window
         PlotCanvas.Children.Add(polyT1);
         PlotCanvas.Children.Add(polyT2);
 
-        // Метки времени по краям оси X
         var startLabel = new TextBlock
         {
             Text = minTime.ToLocalTime().ToString("HH:mm\ndd.MM", CultureInfo.InvariantCulture),

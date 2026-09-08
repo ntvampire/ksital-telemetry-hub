@@ -1,9 +1,10 @@
 <Window x:Class="KsitalTelemetryHub.UI.Desktop.HistoryGraphWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="График температур объекта" Height="600" Width="950"
-        Background="#1E1E2E" WindowStartupLocation="CenterOwner">
-    <Grid Margin="15">
+        Title="График температур объекта" Height="620" Width="1020"
+        Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -11,39 +12,47 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Заголовок -->
-        <DockPanel Grid.Row="0" Margin="0,0,0,10">
+        <!-- Шапка: заголовок, периоды и кнопка экспорта -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock x:Name="TxtTitle" Text="Динамика температур: Объект" 
-                       Foreground="#ECEFF4" FontSize="18" FontWeight="Bold"/>
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
-                <Button Content="1 час" Click="BtnPeriod_Click" Tag="1" Margin="4,0" Padding="10,4" Background="#313244" Foreground="#CDD6F4" BorderThickness="0"/>
-                <Button Content="6 часов" Click="BtnPeriod_Click" Tag="6" Margin="4,0" Padding="10,4" Background="#313244" Foreground="#CDD6F4" BorderThickness="0"/>
-                <Button Content="24 часа" Click="BtnPeriod_Click" Tag="24" Margin="4,0" Padding="10,4" Background="#45475A" Foreground="#CDD6F4" FontWeight="Bold" BorderThickness="0"/>
-                <Button Content="7 дней" Click="BtnPeriod_Click" Tag="168" Margin="4,0" Padding="10,4" Background="#313244" Foreground="#CDD6F4" BorderThickness="0"/>
+                       Foreground="{DynamicResource TextMain}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                <Button Content="1 час" Click="BtnPeriod_Click" Tag="1" Margin="3,0" Padding="10,5" 
+                        Background="{DynamicResource BgHeader}" Foreground="{DynamicResource TextMain}" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="6 часов" Click="BtnPeriod_Click" Tag="6" Margin="3,0" Padding="10,5" 
+                        Background="{DynamicResource BgHeader}" Foreground="{DynamicResource TextMain}" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="24 часа" Click="BtnPeriod_Click" Tag="24" Margin="3,0" Padding="10,5" 
+                        Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
+                <Button Content="7 дней" Click="BtnPeriod_Click" Tag="168" Margin="3,0" Padding="10,5" 
+                        Background="{DynamicResource BgHeader}" Foreground="{DynamicResource TextMain}" BorderThickness="0" Cursor="Hand"/>
+
+                <!-- Кнопка экспорта в CSV -->
+                <Button Content="💾 Экспорт в CSV" Click="BtnExportCsv_Click" Margin="12,0,0,0" Padding="12,5" 
+                        Background="#A6E3A1" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
             </StackPanel>
         </DockPanel>
 
-        <!-- Легенда и статистика -->
-        <Border Grid.Row="1" Background="#24273A" CornerRadius="6" Padding="12,8" Margin="0,0,0,10">
+        <!-- Легенда и диапазон -->
+        <Border Grid.Row="1" Background="{DynamicResource BgCard}" CornerRadius="6" Padding="14,8" Margin="0,0,0,10">
             <DockPanel LastChildFill="False">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <Rectangle Width="16" Height="4" Fill="#F38BA8" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBlock Text="T1 (Подача)" Foreground="#F38BA8" FontWeight="Bold" Margin="0,0,20,0"/>
+                    <TextBlock Text="T1 (Подача)" Foreground="#F38BA8" FontWeight="Bold" FontSize="13" Margin="0,0,24,0"/>
 
                     <Rectangle Width="16" Height="4" Fill="#89B4FA" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBlock Text="T2 (Обратка)" Foreground="#89B4FA" FontWeight="Bold" Margin="0,0,20,0"/>
+                    <TextBlock Text="T2 (Обратка)" Foreground="#89B4FA" FontWeight="Bold" FontSize="13" Margin="0,0,24,0"/>
                 </StackPanel>
 
-                <TextBlock x:Name="TxtStats" DockPanel.Dock="Right" Foreground="#A6ADC8" VerticalAlignment="Center" FontSize="12"/>
+                <TextBlock x:Name="TxtStats" DockPanel.Dock="Right" Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center" FontSize="13"/>
             </DockPanel>
         </Border>
 
         <!-- Холст графика -->
-        <Border Grid.Row="2" Background="#181825" CornerRadius="8" BorderBrush="#313244" BorderThickness="1" ClipToBounds="True">
+        <Border Grid.Row="2" Background="{DynamicResource BgInner}" CornerRadius="8" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" ClipToBounds="True">
             <Canvas x:Name="PlotCanvas" SizeChanged="PlotCanvas_SizeChanged"/>
         </Border>
 
-        <!-- Подвал -->
-        <TextBlock x:Name="TxtPointsCount" Grid.Row="3" Text="Загрузка..." Foreground="#6C7086" Margin="0,6,0,0" FontSize="11"/>
+        <!-- Подвал со статусом -->
+        <TextBlock x:Name="TxtPointsCount" Grid.Row="3" Text="Загрузка данных..." Foreground="{DynamicResource TextMuted}" Margin="0,8,0,0" FontSize="12"/>
     </Grid>
 </Window>
