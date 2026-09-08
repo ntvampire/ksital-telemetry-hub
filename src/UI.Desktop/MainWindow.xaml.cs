@@ -8,12 +8,15 @@ using Microsoft.EntityFrameworkCore;
 using KsitalTelemetryHub.Core;
 using KsitalTelemetryHub.Modem.Engine;
 using KsitalTelemetryHub.Storage.Sqlite;
+using System.Media;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer _timer;
+    private long _lastMaxAlarmId = 0;
+	private DateTime _lastSoundTime = DateTime.MinValue;
+	private readonly DispatcherTimer _timer;
     private readonly string _dbPath;
     private string _currentPort = "COM3";
 
@@ -153,8 +156,29 @@ public partial class MainWindow : Window
                 })
                 .ToListAsync();
 
-            GridAlarms.ItemsSource = alarms;
+		GridAlarms.ItemsSource = alarms;
 
+         // Звуковое оповещение диспетчера
+         bool soundAllowed = ChkSoundEnabled.IsChecked == true;
+         if (soundAllowed && alarms.Count > 0)
+         {
+             long currentMaxId = alarms.Max(a => a.Id);
+             bool hasUnacknowledged = alarms.Any(a => !a.IsAcknowledged);
+
+             // 1. Пришла абсолютно новая тревога (Id больше предыдущего максимального)
+             bool isBrandNewAlarm = _lastMaxAlarmId > 0 && currentMaxId > _lastMaxAlarmId;
+
+             // 2. Либо периодическое напоминание раз в 12 секунд о висящих неквитированных тревогах
+             bool reminderTick = hasUnacknowledged && (DateTime.UtcNow - _lastSoundTime).TotalSeconds >= 12;
+
+             if (isBrandNewAlarm || reminderTick)
+             {
+                 SystemSounds.Exclamation.Play();
+                 _lastSoundTime = DateTime.UtcNow;
+             }
+
+             _lastMaxAlarmId = currentMaxId;
+         }
             // Восстановление курсора на той же строке
             if (selectedAlarmId.HasValue)
             {

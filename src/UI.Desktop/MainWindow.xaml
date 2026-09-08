@@ -11,7 +11,7 @@
             <RowDefinition Height="2*"/>
         </Grid.RowDefinitions>
 
-        <!-- Верхняя панель управления и индикации -->
+<!-- Верхняя панель управления и индикации -->
         <Border Grid.Row="0" Background="#2B2B3D" CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <DockPanel LastChildFill="False">
                 <TextBlock Text="Диспетчерский пункт КСИТАЛ" 
@@ -30,8 +30,13 @@
                             Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" Padding="8,4" BorderThickness="0" Cursor="Hand"/>
                 </StackPanel>
 
-                <!-- Индикаторы состояния связи -->
+                <!-- Индикаторы состояния связи и звук -->
                 <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <!-- Чекбокс звука -->
+                    <CheckBox x:Name="ChkSoundEnabled" Content="🔔 Звук тревог" IsChecked="True"
+                              Foreground="#CDD6F4" FontSize="12" FontWeight="SemiBold"
+                              VerticalAlignment="Center" Margin="0,0,15,0" Cursor="Hand"/>
+
                     <!-- Индикатор COM-порта -->
                     <Border Background="#181825" CornerRadius="6" Padding="8,4" Margin="4,0">
                         <StackPanel Orientation="Horizontal">
