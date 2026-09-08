@@ -51,6 +51,13 @@ public partial class MainWindow : Window
         }
     }
 
+	private void BtnManageObjects_Click(object sender, RoutedEventArgs e)
+       {
+           var win = new ManageObjectsWindow(_dbPath) { Owner = this };
+           win.ShowDialog();
+           _ = RefreshDataAsync();
+       }
+
     private void CheckHardwareStatus()
     {
         bool comOk = false;
