@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
+    <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
   </ItemGroup>
 
 </Project>

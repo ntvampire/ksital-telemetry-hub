@@ -1,7 +1,7 @@
 ﻿<Window x:Class="KsitalTelemetryHub.UI.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="КСИТАЛ GSM - Диспетчерский пункт телеметрии" Height="720" Width="1100"
+        Title="КСИТАЛ GSM - Диспетчерский пункт телеметрии" Height="780" Width="1180"
         Background="#1E1E2E" WindowStartupLocation="CenterScreen">
     <Grid Margin="15">
         <Grid.RowDefinitions>
@@ -11,39 +11,80 @@
             <RowDefinition Height="2*"/>
         </Grid.RowDefinitions>
 
-        <!-- Шапка -->
-        <Border Grid.Row="0" Background="#2B2B3D" CornerRadius="8" Padding="15,10" Margin="0,0,0,15">
+        <!-- Верхняя панель управления и индикации -->
+        <Border Grid.Row="0" Background="#2B2B3D" CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <DockPanel LastChildFill="False">
-                <TextBlock Text="Диспетчерский мониторинг котельных и объектов" 
-                           Foreground="#ECEFF4" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TxtStatus" Text="Подключение к БД..." 
-                           Foreground="#88C0D0" FontSize="14" DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                <TextBlock Text="Диспетчерский пункт КСИТАЛ" 
+                           Foreground="#ECEFF4" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,20,0"/>
+
+                <!-- Кнопка справочника объектов -->
+                <Button Content="⚙ Управление объектами" Click="BtnManageObjects_Click"
+                        Background="#45475A" Foreground="#CDD6F4" FontWeight="SemiBold"
+                        Padding="10,5" BorderThickness="0" Margin="0,0,20,0" Cursor="Hand"/>
+
+                <!-- Блок настройки COM-порта -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,20,0">
+                    <TextBlock Text="Порт:" Foreground="#A6ADC8" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox x:Name="CmbPorts" Width="90" Margin="0,0,6,0" DropDownOpened="CmbPorts_DropDownOpened"/>
+                    <Button Content="Сменить" Click="BtnChangePort_Click" 
+                            Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" Padding="8,4" BorderThickness="0" Cursor="Hand"/>
+                </StackPanel>
+
+                <!-- Индикаторы состояния связи -->
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+                    <!-- Индикатор COM-порта -->
+                    <Border Background="#181825" CornerRadius="6" Padding="8,4" Margin="4,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="LedComPort" Width="10" Height="10" Fill="#F38BA8" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtComStatus" Text="COM-порт: Отключен" Foreground="#CDD6F4" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Индикатор GSM-модема -->
+                    <Border Background="#181825" CornerRadius="6" Padding="8,4" Margin="4,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="LedModem" Width="10" Height="10" Fill="#F38BA8" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtModemStatus" Text="Модем: Нет связи" Foreground="#CDD6F4" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </DockPanel>
         </Border>
 
-        <!-- Карточки технологических объектов -->
-        <GroupBox Grid.Row="1" Header="Контролируемые объекты" Foreground="#D8DEE9" FontSize="14" FontWeight="Bold">
+        <!-- Список объектов с группировкой по участкам -->
+        <GroupBox Grid.Row="1" Header="Контролируемые объекты по участкам" Foreground="#D8DEE9" FontSize="14" FontWeight="Bold">
             <ListView x:Name="ListObjects" Background="#181825" BorderThickness="0" Margin="0,5,0,0">
+                <!-- Заголовок группы (Район / Участок) -->
+                <ListView.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate>
+                                <Border Background="#313244" CornerRadius="4" Padding="8,4" Margin="0,6,0,2">
+                                    <TextBlock Text="{Binding Name}" Foreground="#F9E2AF" FontWeight="Bold" FontSize="14"/>
+                                </Border>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListView.GroupStyle>
+
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Border Background="#24273A" CornerRadius="8" Margin="0,4" Padding="12" Width="1020">
+                        <Border Background="#24273A" CornerRadius="8" Margin="0,3" Padding="10" Width="1100">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="220"/>
                                     <ColumnDefinition Width="130"/>
                                     <ColumnDefinition Width="130"/>
                                     <ColumnDefinition Width="130"/>
-                                    <ColumnDefinition Width="150"/>
+                                    <ColumnDefinition Width="160"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Название и телефон -->
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Name}" Foreground="#89B4FA" FontWeight="Bold" FontSize="15"/>
                                     <TextBlock Text="{Binding Phone}" Foreground="#A6ADC8" FontSize="12"/>
                                 </StackPanel>
 
-                                <!-- Подача T1 -->
                                 <Border Grid.Column="1" Background="#313244" CornerRadius="6" Margin="4" Padding="6">
                                     <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="T1 (Подача)" Foreground="#A6ADC8" FontSize="10"/>
@@ -51,7 +92,6 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Обратка T2 -->
                                 <Border Grid.Column="2" Background="#313244" CornerRadius="6" Margin="4" Padding="6">
                                     <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="T2 (Обратка)" Foreground="#A6ADC8" FontSize="10"/>
@@ -59,7 +99,6 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Воздух T3 -->
                                 <Border Grid.Column="3" Background="#313244" CornerRadius="6" Margin="4" Padding="6">
                                     <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="T3 (Воздух)" Foreground="#A6ADC8" FontSize="10"/>
@@ -67,17 +106,15 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Питание и АКБ -->
                                 <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="10,0">
                                     <TextBlock Text="{Binding PowerStatus}" Foreground="{Binding PowerColor}" FontWeight="Bold" FontSize="13"/>
                                     <TextBlock Text="{Binding BatteryStatus}" Foreground="#BAC2DE" FontSize="12"/>
                                 </StackPanel>
 
-				<!-- Время последнего обновления и кнопка графика -->
                                 <StackPanel Grid.Column="5" VerticalAlignment="Center" HorizontalAlignment="Right">
                                     <Button Content="📈 График" Click="BtnShowGraph_Click" Tag="{Binding Id}"
-                                               Background="#89B4FA" Foreground="#11111B" FontWeight="Bold"
-                                               Padding="10,4" Margin="0,0,0,4" BorderThickness="0" Cursor="Hand"/>
+                                            Background="#89B4FA" Foreground="#11111B" FontWeight="Bold"
+                                            Padding="10,4" Margin="0,0,0,4" BorderThickness="0" Cursor="Hand"/>
                                     <TextBlock Text="{Binding LastUpdate}" Foreground="#6C7086" FontSize="11" HorizontalAlignment="Right"/>
                                 </StackPanel>
                             </Grid>
@@ -104,13 +141,12 @@
                           BorderThickness="0" HeadersVisibility="Column" SelectionMode="Single">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Время" Binding="{Binding Timestamp, StringFormat=\{0:dd.MM.yyyy HH:mm:ss\}}" Width="160"/>
-                        <DataGridTextColumn Header="Объект" Binding="{Binding ObjectName}" Width="200"/>
+                        <DataGridTextColumn Header="Объект" Binding="{Binding ObjectName}" Width="220"/>
                         <DataGridTextColumn Header="Описание тревоги" Binding="{Binding Description}" Width="*"/>
-                        <DataGridTextColumn Header="Статус" Binding="{Binding StatusText}" Width="140"/>
+                        <DataGridTextColumn Header="Статус" Binding="{Binding StatusText}" Width="150"/>
                     </DataGrid.Columns>
                 </DataGrid>
 
-                <!-- Кнопка квитирования -->
                 <Button Grid.Row="1" Content="Квитировать (подтвердить) выбранную тревогу" 
                         Click="BtnAcknowledge_Click" Height="32" Margin="0,8,0,0"
                         Background="#F38BA8" Foreground="#11111B" FontWeight="Bold" BorderThickness="0"/>
