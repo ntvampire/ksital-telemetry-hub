@@ -1,4 +1,4 @@
-using Service.Worker;
+using KsitalTelemetryHub.Service.Worker;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Worker>();
