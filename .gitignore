@@ -427,3 +427,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Локальные ярлыки релиза
+release_patch.bat
+release_minor.bat
