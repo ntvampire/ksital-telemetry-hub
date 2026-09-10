@@ -25,7 +25,8 @@ public class AppDbContext : DbContext
         {
             DataSource = _dbPath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared
+            Cache = SqliteCacheMode.Shared,
+            DefaultTimeout = 5 // Ожидание снятия блокировки до 5 секунд против ошибок "database is locked"
         };
         optionsBuilder.UseSqlite(csb.ToString());
     }
@@ -103,7 +104,7 @@ public class AppDbContext : DbContext
             });
         }
 
-        // Фиксация технологической аварии из отчета (например, шлейф или ошибка ОВЕН)
+        // Фиксация технологической аварии из отчета
         if (report.IsAlarm && !string.IsNullOrWhiteSpace(report.AlarmDescription))
         {
             Alarms.Add(new AlarmEvent
@@ -132,6 +133,14 @@ public class AppDbContext : DbContext
         {
             using var conn = db.Database.GetDbConnection();
             conn.Open();
+
+            // Включаем Write-Ahead Logging (WAL) для устойчивости к сбоям питания 24/7
+            using (var walCmd = conn.CreateCommand())
+            {
+                walCmd.CommandText = "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;";
+                try { walCmd.ExecuteNonQuery(); } catch { }
+            }
+
             using var cmd = conn.CreateCommand();
 
             cmd.CommandText = "ALTER TABLE Objects ADD COLUMN DeviceType INTEGER NOT NULL DEFAULT 0;";
