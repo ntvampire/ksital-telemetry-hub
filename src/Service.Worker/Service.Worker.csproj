@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Parser.Ksital\Parser.Ksital.csproj" />
     <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
     <ProjectReference Include="..\Parser.Ccu825\Parser.Ccu825.csproj" />
+    <ProjectReference Include="..\Parser.Owen\Parser.Owen.csproj" />
   </ItemGroup>
 
 </Project>

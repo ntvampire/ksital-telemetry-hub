@@ -157,4 +157,76 @@ public class GsmModemClient : IDisposable
         Disconnect();
         GC.SuppressFinalize(this);
     }
+public bool SendSms(string phoneNumber, string messageText)
+    {
+        if (_serialPort == null || !_serialPort.IsOpen)
+        {
+            Connect();
+        }
+
+        if (_serialPort == null || !_serialPort.IsOpen)
+        {
+            return false;
+        }
+
+        lock (_lock)
+        {
+            // ... остальной код метода
+            try
+            {
+                // 1. Включаем текстовый режим SMS
+                SendCommand("AT+CMGF=1");
+                Thread.Sleep(100);
+
+                // 2. Инициируем команду отправки на номер получателя
+                _serialPort.DiscardInBuffer();
+                _serialPort.Write($"AT+CMGS=\"{phoneNumber}\"\r");
+
+                // Ожидаем приглашения ввода '>' от модема
+                var startWait = DateTime.UtcNow;
+                bool promptReceived = false;
+                while ((DateTime.UtcNow - startWait).TotalSeconds < 5)
+                {
+                    if (_serialPort.BytesToRead > 0)
+                    {
+                        string chunk = _serialPort.ReadExisting();
+                        if (chunk.Contains(">"))
+                        {
+                            promptReceived = true;
+                            break;
+                        }
+                    }
+                    Thread.Sleep(50);
+                }
+
+                if (!promptReceived)
+                {
+                    _serialPort.Write(new byte[] { 0x1B }, 0, 1); // Escape
+                    return false;
+                }
+
+                // 3. Отправляем текст команды и символ завершения Ctrl+Z (0x1A)
+                _serialPort.Write(messageText + "\x1A");
+
+                // 4. Ожидаем подтверждения отправки (+CMGS: ... OK)
+                startWait = DateTime.UtcNow;
+                while ((DateTime.UtcNow - startWait).TotalSeconds < 15)
+                {
+                    if (_serialPort.BytesToRead > 0)
+                    {
+                        string response = _serialPort.ReadExisting();
+                        if (response.Contains("OK")) return true;
+                        if (response.Contains("ERROR")) return false;
+                    }
+                    Thread.Sleep(100);
+                }
+
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
 }
