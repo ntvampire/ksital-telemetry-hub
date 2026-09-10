@@ -1,0 +1,47 @@
+name: Build and Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Срабатывает при отправке любого тега вида v1.0.1, v1.1.0 и т.д.
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version from tag
+        id: get_version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $version = $tag.TrimStart('v')
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Run Release Build Script
+        shell: pwsh
+        run: |
+          .\build_release.ps1 -Version "${{ steps.get_version.outputs.VERSION }}"
+
+      - name: Create GitHub Release and Upload Artifact
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.TAG }}
+          name: Релиз ${{ steps.get_version.outputs.TAG }}
+          files: dist/ksital-hub-${{ steps.get_version.outputs.TAG }}.zip
+          generate_release_notes: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
