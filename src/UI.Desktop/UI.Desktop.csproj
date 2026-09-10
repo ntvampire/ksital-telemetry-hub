@@ -1,28 +1,23 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
     <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
   </ItemGroup>
-
   <ItemGroup>
     <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
   </ItemGroup>
-
   <ItemGroup>
     <Resource Include="app_logo.png" />
     <Resource Include="app.ico" />
   </ItemGroup>
-
 </Project>
