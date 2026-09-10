@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
@@ -27,27 +29,37 @@ jobs:
           choco install innosetup --no-progress
           echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
 
-      - name: Extract version from tag
-        id: get_version
+      - name: Extract version and release notes from tag
+        id: get_tag_info
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           $version = $tag.TrimStart('v')
+          
+          # Извлекаем текст аннотации тега
+          $notes = git tag -l --format="%(contents:subject)%0a%0a%(contents:body)" $tag
+          if ([string]::IsNullOrWhiteSpace($notes)) {
+              $notes = "Релиз $tag"
+          }
+          
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+          
+          # Сохраняем заметки в файл для передачи в action
+          Set-Content -Path "release_notes.txt" -Value $notes -Encoding UTF8
 
       - name: Run Release Build Script
         shell: pwsh
         run: |
-          .\build_release.ps1 -Version "${{ steps.get_version.outputs.VERSION }}"
+          .\build_release.ps1 -Version "${{ steps.get_tag_info.outputs.VERSION }}"
 
       - name: Create GitHub Release and Upload Installer
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.TAG }}
-          name: Релиз ${{ steps.get_version.outputs.TAG }}
+          tag_name: ${{ steps.get_tag_info.outputs.TAG }}
+          name: Релиз ${{ steps.get_tag_info.outputs.TAG }}
+          body_path: release_notes.txt
           files: dist/ksital-hub-setup-*.exe
-          generate_release_notes: true
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
