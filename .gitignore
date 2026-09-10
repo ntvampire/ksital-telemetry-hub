@@ -431,3 +431,5 @@ FodyWeavers.xsd
 # Локальные ярлыки релиза
 release_patch.bat
 release_minor.bat
+
+dist/

@@ -112,41 +112,57 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            // Ищем прикрепленный zip-архив в активах релиза
+            // Ищем прикрепленный файл обновления (предпочтительно .exe установщик, либо .zip)
             string? downloadUrl = null;
-            string zipName = string.Empty;
+            string fileName = string.Empty;
 
             if (root.TryGetProperty("assets", out var assets) && assets.GetArrayLength() > 0)
             {
+                // Сначала ищем EXE установщик
                 foreach (var asset in assets.EnumerateArray())
                 {
                     string name = asset.GetProperty("name").GetString() ?? string.Empty;
-                    if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                     {
                         downloadUrl = asset.GetProperty("browser_download_url").GetString();
-                        zipName = name;
+                        fileName = name;
                         break;
+                    }
+                }
+
+                // Если инсталлятора нет, берем ZIP-архив
+                if (string.IsNullOrWhiteSpace(downloadUrl))
+                {
+                    foreach (var asset in assets.EnumerateArray())
+                    {
+                        string name = asset.GetProperty("name").GetString() ?? string.Empty;
+                        if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        {
+                            downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                            fileName = name;
+                            break;
+                        }
                     }
                 }
             }
 
             if (string.IsNullOrWhiteSpace(downloadUrl))
             {
-                TxtUpdateStatus.Text = $"Найдена версия {tagName}, но zip-архив к релизу не прикреплен.";
+                TxtUpdateStatus.Text = $"Найдена версия {tagName}, но установочный файл в релизе не найден.";
                 return;
             }
 
             TxtUpdateStatus.Text = $"Найдена новая версия {tagName}!";
 
             var res = MessageBox.Show(
-                $"Доступна новая версия: {tagName}\n\nСкачать обновление и установить сейчас?\n(База данных telemetry.db будет сохранена без изменений)",
+                $"Доступна новая версия: {tagName}\n\nСкачать и установить сейчас?\n(База данных telemetry.db будет сохранена без изменений)",
                 "Обновление системы",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Information);
 
             if (res == MessageBoxResult.Yes)
             {
-                await RunUpdateCycleAsync(client, downloadUrl, zipName);
+                await RunUpdateCycleAsync(client, downloadUrl, fileName);
             }
         }
         catch (Exception ex)
@@ -159,26 +175,42 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private async Task RunUpdateCycleAsync(HttpClient client, string downloadUrl, string zipName)
+    private async Task RunUpdateCycleAsync(HttpClient client, string downloadUrl, string fileName)
     {
         try
         {
             ProgressDownload.Visibility = Visibility.Visible;
             ProgressDownload.IsIndeterminate = true;
-            TxtUpdateStatus.Text = "Загрузка архива обновления...";
+            TxtUpdateStatus.Text = "Загрузка обновления...";
 
             string tempDir = Path.Combine(Path.GetTempPath(), "KsitalHubUpdate_" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(tempDir);
 
-            string zipPath = Path.Combine(tempDir, zipName);
-            var zipBytes = await client.GetByteArrayAsync(downloadUrl);
-            await File.WriteAllBytesAsync(zipPath, zipBytes);
+            string downloadedFilePath = Path.Combine(tempDir, fileName);
+            var fileBytes = await client.GetByteArrayAsync(downloadUrl);
+            await File.WriteAllBytesAsync(downloadedFilePath, fileBytes);
 
+            // Если пришел EXE-установщик (Inno Setup)
+            if (fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                TxtUpdateStatus.Text = "Запуск установщика...";
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = downloadedFilePath,
+                    UseShellExecute = true
+                };
+
+                Process.Start(psi);
+                Application.Current.Shutdown();
+                return;
+            }
+
+            // Если пришел ZIP-архив
             TxtUpdateStatus.Text = "Распаковка пакета...";
             string extractedDir = Path.Combine(tempDir, "extracted");
-            ZipFile.ExtractToDirectory(zipPath, extractedDir);
+            ZipFile.ExtractToDirectory(downloadedFilePath, extractedDir);
 
-            // Если внутри архива оказалась одна корневая папка — спускаемся в неё
             string sourcePayloadDir = extractedDir;
             var subDirs = Directory.GetDirectories(extractedDir);
             var filesInRoot = Directory.GetFiles(extractedDir);
@@ -187,14 +219,11 @@ public partial class SettingsWindow : Window
                 sourcePayloadDir = subDirs[0];
             }
 
-            // Путь к текущей установленной программе
             string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
-
-            // Формируем автономный скрипт обновления
             string updaterBat = Path.Combine(tempDir, "apply_update.bat");
             string batContent = $@"@echo off
 chcp 65001 >nul
-echo Ожидание завершения процессов программы...
+echo Ожидание завершения процессов...
 timeout /t 2 /nobreak >nul
 taskkill /f /im UI.Desktop.exe >nul 2>&1
 taskkill /f /im Service.Worker.exe >nul 2>&1
@@ -209,17 +238,14 @@ xcopy ""{sourcePayloadDir}\*.*"" ""{appDir}\"" /E /Y /H /R /exclude:exclude_db.t
 
 echo Запуск обновленного интерфейса...
 start """" ""{appDir}\UI.Desktop.exe""
-
-echo Очистка временных файлов...
 exit
 ";
-            // Исключаем перезапись файла базы данных
             File.WriteAllText(Path.Combine(tempDir, "exclude_db.txt"), "telemetry.db\ntelemetry.db-wal\ntelemetry.db-shm\n");
             File.WriteAllText(updaterBat, batContent);
 
-            TxtUpdateStatus.Text = "Перезапуск для применения обновления...";
+            TxtUpdateStatus.Text = "Применение обновления...";
 
-            var psi = new ProcessStartInfo
+            var psiZip = new ProcessStartInfo
             {
                 FileName = updaterBat,
                 UseShellExecute = true,
@@ -227,9 +253,7 @@ exit
                 WorkingDirectory = tempDir
             };
 
-            Process.Start(psi);
-
-            // Закрываем текущее приложение, чтобы updater заменил файлы
+            Process.Start(psiZip);
             Application.Current.Shutdown();
         }
         catch (Exception ex)
