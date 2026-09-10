@@ -45,13 +45,18 @@ public partial class MainWindow : Window
         AppDbContext.EnsureDatabaseUpdated(_dbPath);
 
         _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _timer.Tick += async (s, e) => await RefreshDataAsync();
+        _timer.Tick += async (s, e) =>
+        {
+            await RefreshDataAsync();
+            await RefreshCommandsAsync();
+        };
         _timer.Start();
 
         Loaded += async (s, e) =>
         {
             await CheckHardwareStatusAsync();
             await RefreshDataAsync();
+            await RefreshCommandsAsync();
         };
     }
 
@@ -72,6 +77,7 @@ public partial class MainWindow : Window
             _currentPort = dlg.SelectedPort;
             await CheckHardwareStatusAsync();
             await RefreshDataAsync();
+            await RefreshCommandsAsync();
         }
     }
 
@@ -82,6 +88,7 @@ public partial class MainWindow : Window
             var dlg = new ObjectDetailsWindow(vm.Id, _dbPath) { Owner = this };
             dlg.ShowDialog();
             await RefreshDataAsync();
+            await RefreshCommandsAsync();
         }
     }
 
@@ -92,6 +99,7 @@ public partial class MainWindow : Window
             var dlg = new ObjectDetailsWindow(objId, _dbPath) { Owner = this };
             dlg.ShowDialog();
             await RefreshDataAsync();
+            await RefreshCommandsAsync();
         }
     }
 
@@ -101,6 +109,7 @@ public partial class MainWindow : Window
         if (dlg.ShowDialog() == true)
         {
             await RefreshDataAsync();
+            await RefreshCommandsAsync();
         }
     }
 
@@ -118,6 +127,7 @@ public partial class MainWindow : Window
                     db.Objects.Remove(obj);
                     await db.SaveChangesAsync();
                     await RefreshDataAsync();
+                    await RefreshCommandsAsync();
                 }
             }
         }
@@ -254,6 +264,83 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private async Task RefreshCommandsAsync()
+    {
+        try
+        {
+            using var db = new AppDbContext(_dbPath);
+            if (!await db.Database.CanConnectAsync()) return;
+
+            var commands = await db.OutgoingCommands
+                .OrderByDescending(c => c.CreatedAt)
+                .Take(100)
+                .ToListAsync();
+
+            var objNames = await db.Objects.ToDictionaryAsync(o => o.Id, o => o.Name);
+
+            var viewItems = commands.Select(c => new OutgoingCommandViewModel
+            {
+                Id = c.Id,
+                CreatedAt = c.CreatedAt,
+                ObjectName = objNames.GetValueOrDefault(c.MonitoredObjectId, "—"),
+                PhoneNumber = c.PhoneNumber,
+                Description = c.Description,
+                RawPayload = c.RawPayload,
+                StatusText = c.Status switch
+                {
+                    CommandStatus.Pending => "⏳ В очереди",
+                    CommandStatus.Sent => "✅ Отправлено",
+                    CommandStatus.Failed => "❌ Ошибка",
+                    _ => c.Status.ToString()
+                },
+                SentAtText = c.SentAt.HasValue ? $"{c.SentAt.Value:dd.MM.yyyy HH:mm:ss}" : "—",
+                ErrorMessage = c.ErrorMessage ?? string.Empty
+            }).ToList();
+
+            GridCommands.ItemsSource = viewItems;
+
+            int pendingCount = commands.Count(c => c.Status == CommandStatus.Pending);
+            int sentCount = commands.Count(c => c.Status == CommandStatus.Sent);
+            int failedCount = commands.Count(c => c.Status == CommandStatus.Failed);
+
+            TxtCommandsSummary.Text = $"Всего: {commands.Count} | Ожидают: {pendingCount} | Отправлено: {sentCount} | Ошибок: {failedCount}";
+        }
+        catch { }
+    }
+
+    private async void BtnRefreshCommands_Click(object sender, RoutedEventArgs e)
+    {
+        await RefreshCommandsAsync();
+    }
+
+    private async void BtnRetryFailedCommands_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            using var db = new AppDbContext(_dbPath);
+            var failedList = await db.OutgoingCommands.Where(c => c.Status == CommandStatus.Failed).ToListAsync();
+            if (failedList.Count == 0)
+            {
+                MessageBox.Show("Нет команд со статусом ошибки.", "Информация", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            foreach (var cmd in failedList)
+            {
+                cmd.Status = CommandStatus.Pending;
+                cmd.ErrorMessage = null;
+            }
+
+            await db.SaveChangesAsync();
+            await RefreshCommandsAsync();
+            MessageBox.Show($"Повторно поставлено в очередь команд: {failedList.Count}.", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка: {ex.Message}", "Сбой", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     private async void BtnAcknowledge_Click(object sender, RoutedEventArgs e)
     {
         if (GridAlarms.SelectedItem is AlarmItemViewModel selected)
@@ -305,4 +392,17 @@ public class AlarmItemViewModel
     public string Description { get; set; } = string.Empty;
     public bool IsAcknowledged { get; set; }
     public string StatusText { get; set; } = string.Empty;
+}
+
+public class OutgoingCommandViewModel
+{
+    public long Id { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string ObjectName { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string RawPayload { get; set; } = string.Empty;
+    public string StatusText { get; set; } = string.Empty;
+    public string SentAtText { get; set; } = string.Empty;
+    public string ErrorMessage { get; set; } = string.Empty;
 }
