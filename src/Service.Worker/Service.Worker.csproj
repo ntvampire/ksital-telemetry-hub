@@ -16,6 +16,7 @@
     <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
     <ProjectReference Include="..\Parser.Ksital\Parser.Ksital.csproj" />
     <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
+    <ProjectReference Include="..\Parser.Ccu825\Parser.Ccu825.csproj" />
   </ItemGroup>
 
 </Project>
