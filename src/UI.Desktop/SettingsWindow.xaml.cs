@@ -1,13 +1,22 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
 using System.IO.Ports;
+using System.Linq;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
 using System.Windows;
-using Microsoft.Win32;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
 public partial class SettingsWindow : Window
 {
-    public string SelectedPort { get; private set; }
+    private const string GitHubRepo = "ntvampire/ksital-telemetry-hub";
     private readonly string _dbPath;
+    public string SelectedPort { get; private set; }
 
     public SettingsWindow(string currentPort, string dbPath)
     {
@@ -15,63 +24,219 @@ public partial class SettingsWindow : Window
         SelectedPort = currentPort;
         _dbPath = dbPath;
 
-        LoadPorts();
-        TxtBackupFolder.Text = BackupManager.BackupFolder;
+        TxtDbInfo.Text = $"База данных: {Path.GetFullPath(_dbPath)} (Режим: WAL, 24/7)";
+        
+        var ver = Assembly.GetExecutingAssembly().GetName().Version;
+        TxtCurrentVersion.Text = ver != null ? $"v{ver.Major}.{ver.Minor}.{ver.Build}" : "v1.0.0";
+
+        RefreshPortList(currentPort);
     }
 
-    private void LoadPorts()
+    private void RefreshPortList(string preferPort)
     {
-        var ports = SerialPort.GetPortNames();
-        CmbPorts.ItemsSource = ports;
-        if (ports.Contains(SelectedPort)) CmbPorts.SelectedItem = SelectedPort;
-        else if (ports.Length > 0) CmbPorts.SelectedIndex = 0;
-    }
+        CmbPorts.Items.Clear();
+        var ports = SerialPort.GetPortNames().Distinct().OrderBy(p => p).ToArray();
 
-    private void BtnRefreshPorts_Click(object sender, RoutedEventArgs e) => LoadPorts();
-
-    private void BtnBrowseBackup_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OpenFolderDialog { Title = "Выберите папку для резервных копий" };
-        if (dialog.ShowDialog() == true)
+        foreach (var port in ports)
         {
-            TxtBackupFolder.Text = dialog.FolderName;
-            BackupManager.BackupFolder = dialog.FolderName;
+            CmbPorts.Items.Add(port);
+        }
+
+        if (CmbPorts.Items.Contains(preferPort))
+        {
+            CmbPorts.SelectedItem = preferPort;
+        }
+        else if (CmbPorts.Items.Count > 0)
+        {
+            CmbPorts.SelectedIndex = 0;
+        }
+        else
+        {
+            CmbPorts.Items.Add(preferPort);
+            CmbPorts.SelectedItem = preferPort;
         }
     }
 
-    private void BtnCreateBackup_Click(object sender, RoutedEventArgs e)
+    private void BtnRefreshPorts_Click(object sender, RoutedEventArgs e)
     {
-        BackupManager.BackupFolder = TxtBackupFolder.Text;
-        string path = BackupManager.PerformBackup(_dbPath);
-        MessageBox.Show($"Резервная копия успешно создана:\n{path}", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-
-    private void BtnRestoreBackup_Click(object sender, RoutedEventArgs e)
-    {
-        var ofd = new OpenFileDialog
-        {
-            Filter = "База SQLite (*.db)|*.db",
-            Title = "Выберите файл резервной копии"
-        };
-
-        if (ofd.ShowDialog() == true)
-        {
-            if (MessageBox.Show($"Восстановить базу данных из файла?\n{ofd.FileName}\nТекущие данные будут заменены!", "Подтверждение", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
-            {
-                BackupManager.RestoreBackup(ofd.FileName, _dbPath);
-                MessageBox.Show("База данных успешно восстановлена.", "Успех", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-        }
+        string cur = CmbPorts.SelectedItem?.ToString() ?? SelectedPort;
+        RefreshPortList(cur);
     }
 
     private void BtnSave_Click(object sender, RoutedEventArgs e)
     {
-        if (CmbPorts.SelectedItem != null)
-        {
-            SelectedPort = CmbPorts.SelectedItem.ToString()!;
-        }
-        BackupManager.BackupFolder = TxtBackupFolder.Text;
+        SelectedPort = CmbPorts.SelectedItem?.ToString() ?? "COM3";
         DialogResult = true;
         Close();
+    }
+
+    private void BtnCancel_Click(object sender, RoutedEventArgs e)
+    {
+        DialogResult = false;
+        Close();
+    }
+
+    private async void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        BtnCheckUpdate.IsEnabled = false;
+        TxtUpdateStatus.Text = "Связь с GitHub Releases...";
+        TxtUpdateStatus.Foreground = (System.Windows.Media.Brush)FindResource("TextMuted");
+
+        try
+        {
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("KsitalTelemetryHub-Updater");
+
+            string url = $"https://api.github.com/repos/{GitHubRepo}/releases/latest";
+            var response = await client.GetAsync(url);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                TxtUpdateStatus.Text = "Релизы в репозитории пока не найдены.";
+                return;
+            }
+
+            response.EnsureSuccessStatusCode();
+
+            string json = await response.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            string tagName = root.GetProperty("tag_name").GetString() ?? string.Empty;
+            string cleanTag = tagName.TrimStart('v', 'V');
+
+            var currentVer = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+            if (Version.TryParse(cleanTag, out var latestVer) && latestVer <= currentVer)
+            {
+                TxtUpdateStatus.Text = $"У вас установлена актуальная версия ({TxtCurrentVersion.Text}).";
+                return;
+            }
+
+            // Ищем прикрепленный zip-архив в активах релиза
+            string? downloadUrl = null;
+            string zipName = string.Empty;
+
+            if (root.TryGetProperty("assets", out var assets) && assets.GetArrayLength() > 0)
+            {
+                foreach (var asset in assets.EnumerateArray())
+                {
+                    string name = asset.GetProperty("name").GetString() ?? string.Empty;
+                    if (name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                    {
+                        downloadUrl = asset.GetProperty("browser_download_url").GetString();
+                        zipName = name;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(downloadUrl))
+            {
+                TxtUpdateStatus.Text = $"Найдена версия {tagName}, но zip-архив к релизу не прикреплен.";
+                return;
+            }
+
+            TxtUpdateStatus.Text = $"Найдена новая версия {tagName}!";
+
+            var res = MessageBox.Show(
+                $"Доступна новая версия: {tagName}\n\nСкачать обновление и установить сейчас?\n(База данных telemetry.db будет сохранена без изменений)",
+                "Обновление системы",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (res == MessageBoxResult.Yes)
+            {
+                await RunUpdateCycleAsync(client, downloadUrl, zipName);
+            }
+        }
+        catch (Exception ex)
+        {
+            TxtUpdateStatus.Text = $"Ошибка проверки: {ex.Message}";
+        }
+        finally
+        {
+            BtnCheckUpdate.IsEnabled = true;
+        }
+    }
+
+    private async Task RunUpdateCycleAsync(HttpClient client, string downloadUrl, string zipName)
+    {
+        try
+        {
+            ProgressDownload.Visibility = Visibility.Visible;
+            ProgressDownload.IsIndeterminate = true;
+            TxtUpdateStatus.Text = "Загрузка архива обновления...";
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "KsitalHubUpdate_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            string zipPath = Path.Combine(tempDir, zipName);
+            var zipBytes = await client.GetByteArrayAsync(downloadUrl);
+            await File.WriteAllBytesAsync(zipPath, zipBytes);
+
+            TxtUpdateStatus.Text = "Распаковка пакета...";
+            string extractedDir = Path.Combine(tempDir, "extracted");
+            ZipFile.ExtractToDirectory(zipPath, extractedDir);
+
+            // Если внутри архива оказалась одна корневая папка — спускаемся в неё
+            string sourcePayloadDir = extractedDir;
+            var subDirs = Directory.GetDirectories(extractedDir);
+            var filesInRoot = Directory.GetFiles(extractedDir);
+            if (filesInRoot.Length == 0 && subDirs.Length == 1)
+            {
+                sourcePayloadDir = subDirs[0];
+            }
+
+            // Путь к текущей установленной программе
+            string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+
+            // Формируем автономный скрипт обновления
+            string updaterBat = Path.Combine(tempDir, "apply_update.bat");
+            string batContent = $@"@echo off
+chcp 65001 >nul
+echo Ожидание завершения процессов программы...
+timeout /t 2 /nobreak >nul
+taskkill /f /im UI.Desktop.exe >nul 2>&1
+taskkill /f /im Service.Worker.exe >nul 2>&1
+
+echo Создание резервной копии базы данных...
+if exist ""{appDir}\telemetry.db"" (
+    copy /y ""{appDir}\telemetry.db"" ""{appDir}\telemetry.db.bak"" >nul
+)
+
+echo Обновление исполняемых файлов...
+xcopy ""{sourcePayloadDir}\*.*"" ""{appDir}\"" /E /Y /H /R /exclude:exclude_db.txt >nul 2>&1
+
+echo Запуск обновленного интерфейса...
+start """" ""{appDir}\UI.Desktop.exe""
+
+echo Очистка временных файлов...
+exit
+";
+            // Исключаем перезапись файла базы данных
+            File.WriteAllText(Path.Combine(tempDir, "exclude_db.txt"), "telemetry.db\ntelemetry.db-wal\ntelemetry.db-shm\n");
+            File.WriteAllText(updaterBat, batContent);
+
+            TxtUpdateStatus.Text = "Перезапуск для применения обновления...";
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = updaterBat,
+                UseShellExecute = true,
+                CreateNoWindow = true,
+                WorkingDirectory = tempDir
+            };
+
+            Process.Start(psi);
+
+            // Закрываем текущее приложение, чтобы updater заменил файлы
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            ProgressDownload.Visibility = Visibility.Collapsed;
+            TxtUpdateStatus.Text = $"Сбой обновления: {ex.Message}";
+            MessageBox.Show($"Не удалось выполнить обновление: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }

@@ -1,86 +1,71 @@
 <Window x:Class="KsitalTelemetryHub.UI.Desktop.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Параметры и сервис системы" Height="520" Width="780"
+        Title="Настройки системы" Height="530" Width="480"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="{DynamicResource BgMain}" Foreground="{DynamicResource TextMain}"
-        FontSize="14" WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
-    <Window.Resources>
-        <Style TargetType="TabItem">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="TabBorder" Background="{DynamicResource BgHeader}" 
-                                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1,1,1,0" 
-                                CornerRadius="6,6,0,0" Margin="2,0,2,-1" Padding="16,8">
-                            <ContentPresenter x:Name="TabContent" ContentSource="Header" 
-                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource BgCard}"/>
-                                <Setter TargetName="TabBorder" Property="BorderThickness" Value="1,1,1,0"/>
-                                <Setter Property="Foreground" Value="#89B4FA"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TabBorder" Property="Background" Value="{DynamicResource BorderColor}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
-
+        BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
     <Grid Margin="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="Параметры системы" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,15"/>
+        <!-- Заголовок -->
+        <TextBlock Grid.Row="0" Text="Параметры подключения и системы" 
+                   FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,16"/>
 
-        <TabControl Grid.Row="1" Background="{DynamicResource BgCard}" BorderBrush="{DynamicResource BorderColor}">
-            <!-- Вкладка Связь и Модем -->
-            <TabItem Header="Связь и Модем">
-                <StackPanel Margin="20">
-                    <TextBlock Text="COM-порт подключения GSM-модема:" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,8"/>
-                    <StackPanel Orientation="Horizontal">
-                        <ComboBox x:Name="CmbPorts" Width="160" Height="34" FontSize="14" VerticalContentAlignment="Center"/>
-                        <Button Content="Обновить список" Click="BtnRefreshPorts_Click" Margin="12,0,0,0" Padding="14,6" FontSize="13" Background="{DynamicResource BgInner}" Foreground="{DynamicResource TextMain}" BorderThickness="0" Cursor="Hand"/>
-                    </StackPanel>
-                    <TextBlock Text="Стандартный режим работы модема: 115200 бод, 8-N-1, PDU (UCS2 кириллица)" 
-                               Foreground="{DynamicResource TextMuted}" Margin="0,12,0,0" FontSize="13"/>
+        <!-- Секция COM-порта -->
+        <Border Grid.Row="1" Background="{DynamicResource BgCard}" CornerRadius="8" Padding="14" Margin="0,0,0,14">
+            <StackPanel>
+                <TextBlock Text="COM-порт GSM-модема:" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource TextMain}" Margin="0,0,0,8"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="CmbPorts" Grid.Column="0" Height="34" FontSize="14" VerticalContentAlignment="Center"/>
+                    <Button Grid.Column="1" Content="🔄" Click="BtnRefreshPorts_Click" Width="36" Height="34" Margin="8,0,0,0"
+                            Background="#45475A" Foreground="#CDD6F4" BorderThickness="0" Cursor="Hand" ToolTip="Обновить список портов"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Секция обновления -->
+        <Border Grid.Row="2" Background="{DynamicResource BgCard}" CornerRadius="8" Padding="14" Margin="0,0,0,14">
+            <StackPanel>
+                <TextBlock Text="Обновление программы (GitHub):" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource TextMain}" Margin="0,0,0,8"/>
+                
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Текущая версия:" Foreground="{DynamicResource TextMuted}" FontSize="13" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="TxtCurrentVersion" Text="v1.0.0" FontWeight="Bold" Foreground="#89B4FA" FontSize="13"/>
                 </StackPanel>
-            </TabItem>
 
-            <!-- Вкладка Резервное копирование -->
-            <TabItem Header="Резервное копирование">
-                <StackPanel Margin="20">
-                    <TextBlock Text="Папка для хранения резервных копий:" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,4"/>
-                    <TextBlock Text="Автоматический бэкап выполняется каждые сутки в 04:00 (хранятся последние 10 копий)" 
-                               Foreground="{DynamicResource TextMuted}" FontSize="13" Margin="0,0,0,10"/>
+                <Button x:Name="BtnCheckUpdate" Content="🔍 Проверить обновления" Click="BtnCheckUpdate_Click"
+                        Height="34" Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" FontSize="13"
+                        BorderThickness="0" Cursor="Hand" Margin="0,0,0,8"/>
 
-                    <DockPanel Margin="0,0,0,20">
-                        <Button Content="Обзор..." Click="BtnBrowseBackup_Click" DockPanel.Dock="Right" Padding="14,6" FontSize="13" Margin="10,0,0,0" Cursor="Hand"/>
-                        <TextBox x:Name="TxtBackupFolder" Height="34" VerticalContentAlignment="Center" Padding="6,0" FontSize="13"
-                                 Background="{DynamicResource BgInner}" Foreground="{DynamicResource TextMain}" BorderBrush="{DynamicResource BorderColor}"/>
-                    </DockPanel>
+                <TextBlock x:Name="TxtUpdateStatus" Text="Проверка не выполнялась" Foreground="{DynamicResource TextMuted}" 
+                           FontSize="12" TextWrapping="Wrap"/>
+                <ProgressBar x:Name="ProgressDownload" Height="6" Margin="0,6,0,0" Visibility="Collapsed" 
+                             Foreground="#A6E3A1" Background="{DynamicResource BgInner}" BorderThickness="0"/>
+            </StackPanel>
+        </Border>
 
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="Создать копию сейчас" Click="BtnCreateBackup_Click" Padding="14,8" FontSize="14" Background="#A6E3A1" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Margin="0,0,12,0" Cursor="Hand"/>
-                        <Button Content="Восстановить базу из файла..." Click="BtnRestoreBackup_Click" Padding="14,8" FontSize="14" Background="#F38BA8" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
-                    </StackPanel>
-                </StackPanel>
-            </TabItem>
-        </TabControl>
+        <!-- Информационный блок о БД -->
+        <Border Grid.Row="3" Background="{DynamicResource BgInner}" CornerRadius="6" Padding="10" VerticalAlignment="Top">
+            <TextBlock x:Name="TxtDbInfo" Text="База данных: telemetry.db" Foreground="{DynamicResource TextMuted}" FontSize="12" TextWrapping="Wrap"/>
+        </Border>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Content="Сохранить и закрыть" Click="BtnSave_Click" Width="180" Height="38" FontSize="14"
-                    Background="#89B4FA" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
+        <!-- Кнопки сохранения/отмены -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
+            <Button Content="Отмена" Click="BtnCancel_Click" Width="90" Height="34" Margin="0,0,10,0"
+                    Background="#45475A" Foreground="#CDD6F4" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand"/>
+            <Button Content="Сохранить" Click="BtnSave_Click" Width="100" Height="34"
+                    Background="#A6E3A1" Foreground="#11111B" FontWeight="Bold" BorderThickness="0" Cursor="Hand"/>
         </StackPanel>
     </Grid>
 </Window>

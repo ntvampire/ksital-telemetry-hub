@@ -6,16 +6,23 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <Version>1.0.0</Version>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
-    <Resource Include="app_logo.png" />
+    <ProjectReference Include="..\Core\Core.csproj" />
+    <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
+    <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Core\Core.csproj" />
-    <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
-    <ProjectReference Include="..\Storage.Sqlite\Storage.Sqlite.csproj" />
+    <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app_logo.png" />
+    <Resource Include="app.ico" />
   </ItemGroup>
 
 </Project>
