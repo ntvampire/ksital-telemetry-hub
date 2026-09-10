@@ -23,6 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Parser.Ccu825\Parser.Ccu825.csproj" />
     <ProjectReference Include="..\..\src\Core\Core.csproj" />
+    <ProjectReference Include="..\..\src\Parser.Owen\Parser.Owen.csproj" />
+    <ProjectReference Include="..\..\src\Storage.Sqlite\Storage.Sqlite.csproj" />
   </ItemGroup>
 
 </Project>

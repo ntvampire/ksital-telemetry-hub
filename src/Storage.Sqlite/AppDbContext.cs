@@ -48,17 +48,19 @@ public class AppDbContext : DbContext
             .HasIndex(c => c.CreatedAt);
     }
 
-public async Task SaveReportAsync(KsitalReport report, CancellationToken cancellationToken = default)
+    public async Task SaveReportAsync(string senderPhone, KsitalReport report, CancellationToken cancellationToken = default)
     {
-        string senderPhone = "+79000000000";
+        string phone = !string.IsNullOrWhiteSpace(senderPhone)
+            ? senderPhone
+            : (!string.IsNullOrWhiteSpace(report.SenderPhone) ? report.SenderPhone : "+79000000000");
 
-        var obj = await Objects.FirstOrDefaultAsync(o => o.PhoneNumber == senderPhone, cancellationToken);
+        var obj = await Objects.FirstOrDefaultAsync(o => o.PhoneNumber == phone, cancellationToken);
         if (obj == null)
         {
             obj = new MonitoredObject
             {
-                PhoneNumber = senderPhone,
-                Name = $"Объект {senderPhone}",
+                PhoneNumber = phone,
+                Name = string.IsNullOrWhiteSpace(report.DeviceName) ? $"Объект {phone}" : report.DeviceName,
                 District = "Основной участок",
                 DeviceType = DeviceType.Ksital,
                 DevicePassword = "00000"
@@ -89,7 +91,8 @@ public async Task SaveReportAsync(KsitalReport report, CancellationToken cancell
 
         Telemetry.Add(record);
 
-        if (report.MainPower != PowerState.Normal)
+        // Фиксация аварии основного питания 220V
+        if (report.MainPower == PowerState.Off)
         {
             Alarms.Add(new AlarmEvent
             {
@@ -100,12 +103,24 @@ public async Task SaveReportAsync(KsitalReport report, CancellationToken cancell
             });
         }
 
+        // Фиксация технологической аварии из отчета (например, шлейф или ошибка ОВЕН)
+        if (report.IsAlarm && !string.IsNullOrWhiteSpace(report.AlarmDescription))
+        {
+            Alarms.Add(new AlarmEvent
+            {
+                MonitoredObjectId = obj.Id,
+                Timestamp = record.Timestamp,
+                Description = report.AlarmDescription,
+                IsAcknowledged = false
+            });
+        }
+
         await SaveChangesAsync(cancellationToken);
     }
 
-    public Task SaveReportAsync(string senderPhone, KsitalReport report, CancellationToken cancellationToken = default)
+    public Task SaveReportAsync(KsitalReport report, CancellationToken cancellationToken = default)
     {
-        return SaveReportAsync(report, cancellationToken);
+        return SaveReportAsync(report.SenderPhone, report, cancellationToken);
     }
 
     public static void EnsureDatabaseUpdated(string dbPath)
