@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO.Ports;
 using System.Linq;
@@ -25,6 +27,11 @@ public partial class MainWindow : Window
     private long _lastMaxAlarmId = 0;
     private DateTime _lastSoundTime = DateTime.MinValue;
 
+    // Механизм очереди окон тревог и таймера 5 минут
+    private bool _isShowingAlarmWindow = false;
+    private readonly ConcurrentDictionary<long, DateTime> _snoozedAlarms = new();
+    private readonly HashSet<long> _seenAlarms = new();
+
     public MainWindow()
     {
         ThemeManager.ApplyAutoTheme();
@@ -49,6 +56,7 @@ public partial class MainWindow : Window
         {
             await RefreshDataAsync();
             await RefreshCommandsAsync();
+            await ProcessAlarmQueueAsync();
         };
         _timer.Start();
 
@@ -57,6 +65,7 @@ public partial class MainWindow : Window
             await CheckHardwareStatusAsync();
             await RefreshDataAsync();
             await RefreshCommandsAsync();
+            await ProcessAlarmQueueAsync();
         };
     }
 
@@ -264,6 +273,74 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    private async Task ProcessAlarmQueueAsync()
+    {
+        if (_isShowingAlarmWindow) return;
+
+        try
+        {
+            using var db = new AppDbContext(_dbPath);
+            if (!await db.Database.CanConnectAsync()) return;
+
+            // Извлекаем все неподтвержденные тревоги, сортируя по хронологии (старые вперед)
+            var pendingAlarms = await db.Alarms
+                .Include(a => a.MonitoredObject)
+                .Where(a => !a.IsAcknowledged)
+                .OrderBy(a => a.Timestamp)
+                .ToListAsync();
+
+            var now = DateTime.UtcNow;
+
+            foreach (var alarm in pendingAlarms)
+            {
+                // Если тревога отложена на 5 минут и время еще не истекло — пропускаем
+                if (_snoozedAlarms.TryGetValue(alarm.Id, out var snoozeUntil) && now < snoozeUntil)
+                {
+                    continue;
+                }
+
+                _isShowingAlarmWindow = true;
+
+                var obj = alarm.MonitoredObject;
+                var alertWindow = new AlarmAlertWindow(
+                    alarm.Id,
+                    alarm.Timestamp,
+                    obj?.Name ?? "Неизвестный объект",
+                    obj?.District ?? "Основной участок",
+                    obj?.PhoneNumber ?? "—",
+                    obj?.DeviceType ?? DeviceType.Ksital,
+                    alarm.Description,
+                    _dbPath
+                )
+                {
+                    Owner = this
+                };
+
+                alertWindow.ShowDialog();
+
+                if (alertWindow.IsConfirmed)
+                {
+                    _snoozedAlarms.TryRemove(alarm.Id, out _);
+                }
+                else
+                {
+                    // Закрыто без подтверждения -> активируем таймер на 5 минут
+                    _snoozedAlarms[alarm.Id] = DateTime.UtcNow.AddMinutes(5);
+                }
+
+                _isShowingAlarmWindow = false;
+                await RefreshDataAsync();
+
+                // Прерываем цикл, чтобы на следующем тике перейти к следующей тревоге в очереди
+                break;
+            }
+        }
+        catch
+        {
+            _isShowingAlarmWindow = false;
+        }
+    }
+
     private async Task RefreshCommandsAsync()
     {
         try
@@ -352,6 +429,7 @@ public partial class MainWindow : Window
                 alarm.IsAcknowledged = true;
                 alarm.AcknowledgedAt = DateTime.UtcNow;
                 await db.SaveChangesAsync();
+                _snoozedAlarms.TryRemove(alarm.Id, out _);
                 await RefreshDataAsync();
             }
         }
