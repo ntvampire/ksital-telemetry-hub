@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using Microsoft.Win32;
+using Microsoft.Data.Sqlite;
+using KsitalTelemetryHub.Core;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
@@ -21,7 +23,6 @@ public partial class SettingsWindow : Window
     public string SelectedPort { get; private set; }
     public string BackupPath { get; private set; }
 
-    // Добавлен необязательный параметр backupPath, чтобы не сломать текущий вызов из MainWindow
     public SettingsWindow(string currentPort, string dbPath, string backupPath = "")
     {
         InitializeComponent();
@@ -33,7 +34,6 @@ public partial class SettingsWindow : Window
             : backupPath;
             
         TxtBackupPath.Text = BackupPath;
-
         TxtDbInfo.Text = $"База данных: {Path.GetFullPath(_dbPath)} (Режим: WAL, 24/7)";
         
         var ver = Assembly.GetExecutingAssembly().GetName().Version;
@@ -98,7 +98,6 @@ public partial class SettingsWindow : Window
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string backupFile = Path.Combine(BackupPath, $"telemetry_backup_{timestamp}.db");
             
-            // Копируем основной файл и WAL-журналы для целостности
             File.Copy(_dbPath, backupFile, true);
             if (File.Exists(_dbPath + "-wal")) File.Copy(_dbPath + "-wal", backupFile + "-wal", true);
             if (File.Exists(_dbPath + "-shm")) File.Copy(_dbPath + "-shm", backupFile + "-shm", true);
@@ -139,7 +138,6 @@ public partial class SettingsWindow : Window
                     string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
                     string sourceDb = dialog.FileName;
                     
-                    // Скрипт требует остановки системной службы, чтобы снять блокировку с файла
                     string batContent = $@"@echo off
 chcp 65001 >nul
 echo Остановка интерфейса и службы сбора данных...
@@ -166,7 +164,7 @@ exit
                         UseShellExecute = true,
                         CreateNoWindow = true,
                         WorkingDirectory = tempDir,
-                        Verb = "runas" // Запрос прав администратора для управления службой
+                        Verb = "runas"
                     };
                     
                     Process.Start(psi);
@@ -176,6 +174,136 @@ exit
                 {
                     MessageBox.Show($"Не удалось запустить процесс восстановления: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
+            }
+        }
+    }
+
+    private void BtnImport_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Выберите файл для импорта (GSM Guard)",
+            Filter = "Поддерживаемые файлы|*.xlsx;*.csv|Excel Files (*.xlsx)|*.xlsx|CSV Files (*.csv)|*.csv"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                var importedObjects = ImportExportService.ImportFromExcel(dialog.FileName);
+                
+                using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
+                {
+                    connection.Open();
+                    
+                    string tableName = "TelemetryTargets"; 
+                    var cmdTable = connection.CreateCommand();
+                    cmdTable.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%Target%' OR name LIKE '%Object%') LIMIT 1";
+                    var res = cmdTable.ExecuteScalar();
+                    if (res != null) tableName = res.ToString() ?? "TelemetryTargets";
+
+                    var cmdPragma = connection.CreateCommand();
+                    cmdPragma.CommandText = $"PRAGMA table_info({tableName})";
+                    string phoneCol = "PhoneNumber";
+                    string typeCol = "DeviceType";
+                    using (var reader = cmdPragma.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string colName = reader.GetString(1);
+                            if (colName.Contains("Phone")) phoneCol = colName;
+                            if (colName.Contains("Type") || colName.Contains("Equip")) typeCol = colName;
+                        }
+                    }
+
+                    using (var transaction = connection.BeginTransaction())
+                    {
+                        foreach (var target in importedObjects)
+                        {
+                            var cmd = connection.CreateCommand();
+                            cmd.Transaction = transaction;
+                            cmd.CommandText = $"INSERT INTO {tableName} (Id, Name, {phoneCol}, {typeCol}) VALUES (@id, @name, @phone, @type)";
+                            cmd.Parameters.AddWithValue("@id", target.Id ?? Guid.NewGuid().ToString());
+                            cmd.Parameters.AddWithValue("@name", target.Name ?? string.Empty);
+                            cmd.Parameters.AddWithValue("@phone", target.PhoneNumber ?? string.Empty);
+                            cmd.Parameters.AddWithValue("@type", target.DeviceType ?? "Ksital");
+                            cmd.ExecuteNonQuery();
+                        }
+                        transaction.Commit();
+                    }
+                }
+
+                MessageBox.Show($"Успешно импортировано новых объектов: {importedObjects.Count}\nОни появятся в списке диспетчера после перезапуска программы.", "Импорт завершен", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при импорте или сохранении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void BtnExport_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Сохранить список объектов",
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            FileName = $"Объекты_Телеметрия_{DateTime.Now:yyyyMMdd}.xlsx"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                var targets = new System.Collections.Generic.List<ImportExportItem>();
+                
+                using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
+                {
+                    connection.Open();
+                    
+                    string tableName = "TelemetryTargets"; 
+                    var cmdTable = connection.CreateCommand();
+                    cmdTable.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%Target%' OR name LIKE '%Object%') LIMIT 1";
+                    var res = cmdTable.ExecuteScalar();
+                    if (res != null) tableName = res.ToString() ?? "TelemetryTargets";
+
+                    var cmdPragma = connection.CreateCommand();
+                    cmdPragma.CommandText = $"PRAGMA table_info({tableName})";
+                    string phoneCol = "PhoneNumber";
+                    string typeCol = "DeviceType";
+                    using (var reader = cmdPragma.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            string colName = reader.GetString(1);
+                            if (colName.Contains("Phone")) phoneCol = colName;
+                            if (colName.Contains("Type") || colName.Contains("Equip")) typeCol = colName;
+                        }
+                    }
+
+                    var cmd = connection.CreateCommand();
+                    cmd.CommandText = $"SELECT Id, Name, {phoneCol}, {typeCol} FROM {tableName}";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            targets.Add(new ImportExportItem
+                            {
+                                Id = reader.GetValue(0)?.ToString() ?? Guid.NewGuid().ToString(),
+                                Name = reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                                PhoneNumber = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                                DeviceType = reader.IsDBNull(3) ? string.Empty : reader.GetString(3)
+                            });
+                        }
+                    }
+                }
+
+                ImportExportService.ExportToExcel(dialog.FileName, targets);
+                MessageBox.Show("Список объектов успешно экспортирован и готов к использованию.", "Экспорт завершен", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Ошибка при экспорте файла: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }

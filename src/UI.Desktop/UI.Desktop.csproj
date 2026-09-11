@@ -14,6 +14,7 @@
     <ProjectReference Include="..\Modem.Engine\Modem.Engine.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="OxyPlot.Wpf" Version="2.1.2" />
   </ItemGroup>
   <ItemGroup>
