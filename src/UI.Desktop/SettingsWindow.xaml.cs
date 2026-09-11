@@ -9,6 +9,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
+using Microsoft.Win32;
 
 namespace KsitalTelemetryHub.UI.Desktop;
 
@@ -16,13 +17,22 @@ public partial class SettingsWindow : Window
 {
     private const string GitHubRepo = "ntvampire/ksital-telemetry-hub";
     private readonly string _dbPath;
+    
     public string SelectedPort { get; private set; }
+    public string BackupPath { get; private set; }
 
-    public SettingsWindow(string currentPort, string dbPath)
+    // Добавлен необязательный параметр backupPath, чтобы не сломать текущий вызов из MainWindow
+    public SettingsWindow(string currentPort, string dbPath, string backupPath = "")
     {
         InitializeComponent();
         SelectedPort = currentPort;
         _dbPath = dbPath;
+        
+        BackupPath = string.IsNullOrWhiteSpace(backupPath) 
+            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Backups") 
+            : backupPath;
+            
+        TxtBackupPath.Text = BackupPath;
 
         TxtDbInfo.Text = $"База данных: {Path.GetFullPath(_dbPath)} (Режим: WAL, 24/7)";
         
@@ -63,9 +73,117 @@ public partial class SettingsWindow : Window
         RefreshPortList(cur);
     }
 
+    private void BtnBrowseBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Выберите папку для резервных копий",
+            InitialDirectory = Directory.Exists(TxtBackupPath.Text) ? TxtBackupPath.Text : AppDomain.CurrentDomain.BaseDirectory
+        };
+        
+        if (dialog.ShowDialog() == true)
+        {
+            TxtBackupPath.Text = dialog.FolderName;
+            BackupPath = dialog.FolderName;
+        }
+    }
+
+    private void BtnBackup_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!Directory.Exists(BackupPath))
+                Directory.CreateDirectory(BackupPath);
+
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string backupFile = Path.Combine(BackupPath, $"telemetry_backup_{timestamp}.db");
+            
+            // Копируем основной файл и WAL-журналы для целостности
+            File.Copy(_dbPath, backupFile, true);
+            if (File.Exists(_dbPath + "-wal")) File.Copy(_dbPath + "-wal", backupFile + "-wal", true);
+            if (File.Exists(_dbPath + "-shm")) File.Copy(_dbPath + "-shm", backupFile + "-shm", true);
+
+            MessageBox.Show($"Резервная копия успешно создана:\n{backupFile}", "Бэкап", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Ошибка при создании бэкапа: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnRestore_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "Выберите файл резервной копии",
+            Filter = "SQLite База данных (*.db)|*.db|Все файлы (*.*)|*.*",
+            InitialDirectory = Directory.Exists(BackupPath) ? BackupPath : AppDomain.CurrentDomain.BaseDirectory
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var res = MessageBox.Show(
+                "Внимание! Текущая база данных будет заменена. Программа и системная служба сбора данных будут перезапущены.\n\nПродолжить?", 
+                "Восстановление БД", 
+                MessageBoxButton.YesNo, 
+                MessageBoxImage.Warning);
+            
+            if (res == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    string tempDir = Path.Combine(Path.GetTempPath(), "KsitalHubRestore_" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(tempDir);
+                    
+                    string batPath = Path.Combine(tempDir, "apply_restore.bat");
+                    string appDir = AppDomain.CurrentDomain.BaseDirectory.TrimEnd('\\', '/');
+                    string sourceDb = dialog.FileName;
+                    
+                    // Скрипт требует остановки системной службы, чтобы снять блокировку с файла
+                    string batContent = $@"@echo off
+chcp 65001 >nul
+echo Остановка интерфейса и службы сбора данных...
+taskkill /f /im UI.Desktop.exe >nul 2>&1
+net stop KsitalTelemetryWorker >nul 2>&1
+
+echo Восстановление базы данных...
+copy /y ""{sourceDb}"" ""{appDir}\telemetry.db"" >nul
+if exist ""{sourceDb}-wal"" ( copy /y ""{sourceDb}-wal"" ""{appDir}\telemetry.db-wal"" >nul ) else ( del /f /q ""{appDir}\telemetry.db-wal"" >nul 2>&1 )
+if exist ""{sourceDb}-shm"" ( copy /y ""{sourceDb}-shm"" ""{appDir}\telemetry.db-shm"" >nul ) else ( del /f /q ""{appDir}\telemetry.db-shm"" >nul 2>&1 )
+
+echo Запуск службы сбора данных...
+net start KsitalTelemetryWorker >nul 2>&1
+
+echo Перезапуск интерфейса...
+start """" ""{appDir}\UI.Desktop.exe""
+exit
+";
+                    File.WriteAllText(batPath, batContent);
+                    
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = batPath,
+                        UseShellExecute = true,
+                        CreateNoWindow = true,
+                        WorkingDirectory = tempDir,
+                        Verb = "runas" // Запрос прав администратора для управления службой
+                    };
+                    
+                    Process.Start(psi);
+                    Application.Current.Shutdown();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Не удалось запустить процесс восстановления: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+    }
+
     private void BtnSave_Click(object sender, RoutedEventArgs e)
     {
         SelectedPort = CmbPorts.SelectedItem?.ToString() ?? "COM3";
+        BackupPath = TxtBackupPath.Text;
         DialogResult = true;
         Close();
     }
@@ -112,13 +230,11 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            // Ищем прикрепленный файл обновления (предпочтительно .exe установщик, либо .zip)
             string? downloadUrl = null;
             string fileName = string.Empty;
 
             if (root.TryGetProperty("assets", out var assets) && assets.GetArrayLength() > 0)
             {
-                // Сначала ищем EXE установщик
                 foreach (var asset in assets.EnumerateArray())
                 {
                     string name = asset.GetProperty("name").GetString() ?? string.Empty;
@@ -130,7 +246,6 @@ public partial class SettingsWindow : Window
                     }
                 }
 
-                // Если инсталлятора нет, берем ZIP-архив
                 if (string.IsNullOrWhiteSpace(downloadUrl))
                 {
                     foreach (var asset in assets.EnumerateArray())
@@ -190,23 +305,15 @@ public partial class SettingsWindow : Window
             var fileBytes = await client.GetByteArrayAsync(downloadUrl);
             await File.WriteAllBytesAsync(downloadedFilePath, fileBytes);
 
-            // Если пришел EXE-установщик (Inno Setup)
             if (fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
                 TxtUpdateStatus.Text = "Запуск установщика...";
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = downloadedFilePath,
-                    UseShellExecute = true
-                };
-
+                var psi = new ProcessStartInfo { FileName = downloadedFilePath, UseShellExecute = true };
                 Process.Start(psi);
                 Application.Current.Shutdown();
                 return;
             }
 
-            // Если пришел ZIP-архив
             TxtUpdateStatus.Text = "Распаковка пакета...";
             string extractedDir = Path.Combine(tempDir, "extracted");
             ZipFile.ExtractToDirectory(downloadedFilePath, extractedDir);
@@ -226,7 +333,7 @@ chcp 65001 >nul
 echo Ожидание завершения процессов...
 timeout /t 2 /nobreak >nul
 taskkill /f /im UI.Desktop.exe >nul 2>&1
-taskkill /f /im Service.Worker.exe >nul 2>&1
+net stop KsitalTelemetryWorker >nul 2>&1
 
 echo Создание резервной копии базы данных...
 if exist ""{appDir}\telemetry.db"" (
@@ -236,7 +343,8 @@ if exist ""{appDir}\telemetry.db"" (
 echo Обновление исполняемых файлов...
 xcopy ""{sourcePayloadDir}\*.*"" ""{appDir}\"" /E /Y /H /R /exclude:exclude_db.txt >nul 2>&1
 
-echo Запуск обновленного интерфейса...
+echo Запуск службы и интерфейса...
+net start KsitalTelemetryWorker >nul 2>&1
 start """" ""{appDir}\UI.Desktop.exe""
 exit
 ";
@@ -244,13 +352,13 @@ exit
             File.WriteAllText(updaterBat, batContent);
 
             TxtUpdateStatus.Text = "Применение обновления...";
-
             var psiZip = new ProcessStartInfo
             {
                 FileName = updaterBat,
                 UseShellExecute = true,
                 CreateNoWindow = true,
-                WorkingDirectory = tempDir
+                WorkingDirectory = tempDir,
+                Verb = "runas"
             };
 
             Process.Start(psiZip);
